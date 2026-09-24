@@ -8,6 +8,7 @@ import { stat, killChar } from './characters.js';
 import { clamp } from '../util.js';
 import { specialtyEff } from '../data/specialties.js';
 import { focusEff } from './market.js';
+import { townGarrisonUnits, townWalls, townName } from './towns.js';
 
 export const TACTICS = {
   frontal: {
@@ -174,19 +175,21 @@ export async function resolveBattle(ctx) {
   const attArmies = ctx.att.map((id) => s.armies[id]).filter(Boolean);
   let defArmies = ctx.def.map((id) => s.armies[id]).filter(Boolean);
   const attFac = attArmies[0].fac;
-  let defFac = defArmies[0]?.fac || p.owner;
+  const townIdx = ctx.assault && ctx.town !== undefined && ctx.town !== null ? ctx.town : null;
+  const town = townIdx !== null ? p.towns[townIdx] : null;
+  let defFac = defArmies[0]?.fac || (town ? town.owner : p.owner);
   const attUnits = attArmies.flatMap((a) => a.units);
-  const garrison = ctx.assault ? garrisonUnits(pid) : [];
+  const garrison = !ctx.assault ? [] : town ? townGarrisonUnits(pid, townIdx) : garrisonUnits(pid);
   const defUnits = [...defArmies.flatMap((a) => a.units), ...garrison];
   const attGen = chr(attArmies.find((a) => a.gen)?.gen);
   const defGen = chr(defArmies.find((a) => a.gen)?.gen);
-  const walls = ctx.assault ? (p.buildings.walls || 0) + wallBonus(pid) : 0;
+  const walls = !ctx.assault ? 0 : town ? townWalls(pid, townIdx) : (p.buildings.walls || 0) + wallBonus(pid);
   const cA = composition(attUnits), cD = composition(defUnits);
   const optA = availableTactics(cA, terrain, ctx.assault, false, attGen);
   const optD = availableTactics(cD, terrain, ctx.assault, true, defGen);
   const player = s.player;
   const info = {
-    prov: pid, terrain, assault: !!ctx.assault, walls,
+    prov: pid, terrain, assault: !!ctx.assault, walls, town: townIdx,
     att: { fac: attFac, gen: attGen?.id || null, men: Math.round(cA.men), comp: cA, options: optA, units: attUnits.map((u) => ({ t: u.t, hp: u.hp })) },
     def: { fac: defFac, gen: defGen?.id || null, men: Math.round(cD.men), comp: cD, options: optD, units: defUnits.map((u) => ({ t: u.t, hp: u.hp })) },
   };
@@ -201,6 +204,7 @@ export async function resolveBattle(ctx) {
 
   const report = { ...info, tA, tD, lines: [] };
   report.lines.push({ k: 'b.intro', p: { att: facName(attFac), def: facName(defFac), prov: provName(pid), terrain: TERRAINS[terrain].n } });
+  if (town) report.lines.push({ k: 'b.townAssault', p: { town: townName(pid, townIdx) } });
   if (ctx.ambush) report.lines.push({ k: 'b.intercept', p: { fac: facName(attFac) } });
   if (defArmies.some((x) => x.stance === 'fortify')) report.lines.push({ k: 'b.fortified', p: { fac: facName(defFac) } });
 
@@ -241,6 +245,11 @@ export async function resolveBattle(ctx) {
   if (ctx.assault && cA.siege === 0 && walls >= 2) PA *= 0.75;
   // Gelände der Provinz (Pässe, Festungen) und verschanzte Verteidiger
   PD *= 1 + (specialtyEff(pid).defense || 0) + (defArmies.some((x) => x.stance === 'fortify') ? 0.25 : 0);
+  // Burgen im Umland entlasten die belagerte Hauptstadt durch Ausfälle
+  if (ctx.assault && !town) {
+    const relief = (p.towns || []).filter((t) => t.t === 'castle' && t.owner === defFac && !t.siege).length;
+    if (relief) { PD *= 1 + relief * 0.12; report.lines.push({ k: 'b.relief', p: { n: relief } }); }
+  }
   if (ctx.ambush) PA *= 1.15;
   const ratio = PA / (PA + PD);
   const k = 2.2;
@@ -268,7 +277,8 @@ export async function resolveBattle(ctx) {
   // Garnison
   if (garrison.length) {
     const avg = garrison.reduce((x, u) => x + u.hp, 0) / garrison.length;
-    p.garrison = clamp(avg, 0.05, 1);
+    if (town) town.gar = clamp(avg, 0.05, 1);
+    else p.garrison = clamp(avg, 0.05, 1);
   }
   for (const a of [...attArmies, ...defArmies]) {
     a.units = a.units.filter((u) => u.hp > 0.06);

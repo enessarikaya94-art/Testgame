@@ -12,6 +12,7 @@ import { RELIGIONS, CULTURES, TERRAINS } from '../data/world.js';
 import { clamp } from '../util.js';
 import { discover, knows, knownRegions, contactByWar, revealToNeighbors } from './discovery.js';
 import { REGIONS, REGION_IDS } from '../data/regions.js';
+import { townName } from '../data/towns.js';
 
 const d = (de, tr) => ({ de, tr });
 
@@ -33,8 +34,34 @@ const TRAVELERS = {
   africa: [d('Ein Salzhändler aus Sidschilmasa', 'Sicilmaseli bir tuz tüccarı'), d('Ein Pilger aus Kanem', 'Kanemli bir hacı'), d('Ein abessinischer Mönch', 'Habeş bir rahip')],
 };
 
+function charterTowns(fid) {
+  const out = [];
+  for (const pid in G.s.provinces) {
+    const p = G.s.provinces[pid];
+    if (p.owner !== fid || p.order < 45) continue;
+    (p.towns || []).forEach((t, i) => { if (t.owner === fid && t.lvl < 3 && ['town', 'market', 'port'].includes(t.t)) out.push([pid, i]); });
+  }
+  return out;
+}
+
 // ============ Fraktionsereignisse ============
 export const EVENTS = {
+  charter: {
+    chance: 0.02,
+    cond: (fid) => charterTowns(fid).length > 0,
+    prep: (fid) => { const [pid, i] = rng().pick(charterTowns(fid)); return { pid, i }; },
+    title: d('Stadtrechte', 'Şehir Hakları'),
+    text: d('Die Kaufleute und Handwerker von {town} ({prov}) bieten an, Mauern und Markt mitzufinanzieren – wenn wir ihnen Selbstverwaltung und Zollfreiheit gewähren.',
+      '{town} ({prov}) tüccarları ve zanaatkârları, bize özyönetim ve gümrük muafiyeti verirsek sur ve pazar masraflarının bir kısmını üstlenmeyi teklif ediyor.'),
+    params: (ctx) => ({ town: townName(ctx.pid, ctx.i), prov: provName(ctx.pid) }),
+    options: [
+      { t: d('Gewährt die Rechte (50 Gold)', 'Hakları verin (50 altın)'), desc: d('Der Ort steigt eine Stufe auf, Ordnung +5, Ansehen +2', 'Yer bir kademe yükselir, asayiş +5, itibar +2'), ai: 3,
+        ok: (fid) => fac(fid).gold >= 50,
+        fx: (fid, ctx) => { const t = prov(ctx.pid).towns[ctx.i]; if (!t || t.owner !== fid) return; fac(fid).gold -= 50; t.lvl = Math.min(3, t.lvl + 1); prov(ctx.pid).order = Math.min(100, prov(ctx.pid).order + 5); fac(fid).prestige += 2; } },
+      { t: d('Die Stadt gehört dem Herrscher', 'Şehir hükümdarındır'), desc: d('Ordnung −6, einmalig 30 Gold Sondersteuer', 'Asayiş −6, bir kerelik 30 altın özel vergi'), ai: 1,
+        fx: (fid, ctx) => { prov(ctx.pid).order = Math.max(0, prov(ctx.pid).order - 6); fac(fid).gold += 30; } },
+    ],
+  },
   traveler: {
     chance: 0.006,
     cond: (fid) => fac(fid).capital && REGION_IDS.some((r) => !knows(fid, r)),

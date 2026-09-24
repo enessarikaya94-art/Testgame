@@ -80,6 +80,7 @@ export function processDiscovery(bordersOnly = false) {
       const rn = regionOf(n);
       if (rn !== r && !knows(o, rn)) discover(o, rn, 'border');
     }
+    for (const t of s.provinces[pid].towns || []) if (t.owner !== o && t.owner !== 'rebels' && !knows(t.owner, r)) discover(t.owner, r, 'conquest');
   }
   // Einmal im Jahr: Kaufleute und Verbündete bringen Kunde aus fernen Ländern
   if (bordersOnly || s.season !== 0) return;

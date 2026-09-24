@@ -264,6 +264,7 @@ function extend(sc, add) {
   sc.vassals = [...(sc.vassals || []), ...(add.vassals || [])];
   sc.wars = [...(sc.wars || []), ...(add.wars || [])];
   sc.alliances = [...(sc.alliances || []), ...(add.alliances || [])];
+  sc.townOwners = { ...(sc.townOwners || {}), ...(add.townOwners || {}) };
 }
 
 const WEST_ASIA_1000 = {
@@ -301,6 +302,7 @@ const WEST_ASIA_1000 = {
 
 extend(SCENARIOS.s1000, {
   ...WEST_ASIA_1000,
+  townOwners: { 'aleppo:1': 'byzantine', 'multan:0': 'ghaznavid', 'georgia:0': 'georgia' },
   capitals: { castile: 'leon', cordoba: 'cordoba', hre: 'rhineland', france: 'paris', england: 'england', poland: 'greater_poland', hungary: 'hungary', liao: 'shangjing', song: 'kaifeng', xixia: 'xingqing', chola: 'chola', zirid: 'ifriqiya', ghana: 'ghana', ethiopia: 'axum', denmark: 'denmark', sweden: 'sweden', tatars: 'kerulen', zenata: 'fez' },
   govs: { liao: 'sultanate' },
   titles: { hre: ['kaiser'], song: ['huangdi'], cordoba: ['caliph'] },
@@ -329,6 +331,7 @@ extend(SCENARIOS.s1000, {
 });
 
 extend(SCENARIOS.s1071, {
+  townOwners: { 'vaspurakan:1': 'seljuk', 'sicily:0': 'hauteville', 'antioch:2': 'mirdasid', 'amid:1': 'marwanid' },
   owners: {
     rus: ['chernigov', 'smolensk', 'novgorod', 'galich', 'vladimir', 'ryazan'],
     kipchak: ['wallachia'],
@@ -384,6 +387,7 @@ extend(SCENARIOS.s1071, {
 });
 
 extend(SCENARIOS.s1200, {
+  townOwners: { 'jerusalem:0': 'crusader', 'jerusalem:1': 'crusader', 'toledo:2': 'almohad', 'constantinople:0': 'venice', 'georgia:2': 'eldiguzid', 'ani:0': 'saltukid' },
   owners: {
     rus: ['chernigov', 'smolensk'], novgorod: ['novgorod'], vladimir: ['vladimir', 'ryazan'], galicia_volhynia: ['galich'],
     kipchak: ['wallachia'],

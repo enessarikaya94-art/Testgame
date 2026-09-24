@@ -12,9 +12,16 @@ import { initMarket, updateMarket, expirePayments } from './market.js';
 import { SCENARIOS } from '../data/scenarios.js';
 import { FACTIONS, TITLES } from '../data/factions.js';
 import { initDiscovery, processDiscovery } from './discovery.js';
+import { initTowns, setTownOwner } from './towns.js';
 
 export function newGame(scenarioId, playerFid, mapData, seed) {
   const s = createGame(scenarioId, playerFid, seed ?? Math.floor(Math.random() * 1e9), mapData);
+  initTowns();
+  // Umkämpfte Orte zu Spielbeginn (z. B. Akkon 1200)
+  for (const [key, fid] of Object.entries(SCENARIOS[scenarioId].townOwners || {})) {
+    const [pid, i] = key.split(':');
+    if (s.factions[fid]?.alive && s.provinces[pid]?.towns?.[+i]) setTownOwner(pid, +i, fid);
+  }
   setupRulers(SCENARIOS[scenarioId]);
   startingArmies();
   assignStartingGenerals();
@@ -151,7 +158,9 @@ export function score(fid) {
   if (!f?.alive) return 0;
   const provs = factionProvinces(fid);
   const pop = provs.reduce((s, p) => s + prov(p).pop, 0);
-  return Math.round(provs.length * 10 + pop / 20 + f.prestige * 0.5 + f.techs.length * 5 + f.titles.length * 25 + Math.max(0, f.gold) / 50);
+  let towns = 0;
+  for (const p of Object.values(G.s.provinces)) for (const t of p.towns || []) if (t.owner === fid) towns += 1 + t.lvl * 0.5;
+  return Math.round(provs.length * 10 + towns * 2 + pop / 20 + f.prestige * 0.5 + f.techs.length * 5 + f.titles.length * 25 + Math.max(0, f.gold) / 50);
 }
 
 export function ranking() {

@@ -326,3 +326,17 @@ table.rank tr.me { background: rgba(201, 162, 39, 0.2); font-weight: 600; }
 .disc-powers .dp { padding: 2px 8px; border-radius: 8px; background: rgba(255, 248, 225, 0.6); border: 1px solid rgba(90, 65, 35, 0.25); font-size: 13px; }
 table.rank tr.unknown td { color: #7a6650; }
 .tech small.reveal { color: #1f5f7a; }
+
+/* Städte und Orte */
+.townicons { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.townicons span { font-size: 13px; border: 2px solid; border-radius: 6px; padding: 0 3px; background: rgba(255, 250, 235, 0.6); }
+.townicons span.foreign { background: rgba(190, 60, 40, 0.25); }
+.town { display: flex; gap: 8px; padding: 6px 4px; border-bottom: 1px dotted rgba(90, 65, 35, 0.3); }
+.town.foreign { background: rgba(190, 60, 40, 0.08); }
+.town.sel { background: rgba(255, 230, 140, 0.35); }
+.town.cap { background: rgba(201, 162, 39, 0.12); }
+.town .tico { font-size: 20px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(90, 65, 35, 0.5); border-radius: 8px; background: rgba(255, 250, 235, 0.7); flex: none; }
+.town .tmain { flex: 1; min-width: 0; }
+.town .tacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.town .tacts button { font-size: 12px; padding: 2px 6px; }
+.town .tacts button.on { background: #fff0c0; border-color: var(--red); }

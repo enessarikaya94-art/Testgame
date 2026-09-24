@@ -23,6 +23,8 @@ import { opinionParts } from '../game/state.js';
 import { SLOTS, saveSlot, slotMeta, exportSave, importSave, loadSlotData } from './saves.js';
 import { knowsFaction, knows, knownRegions, regionOf } from '../game/discovery.js';
 import { REGIONS, REGION_IDS } from '../data/regions.js';
+import { townsOf, townName, foreignHeld } from '../game/towns.js';
+import { tradeTown } from '../game/diplomacy.js';
 
 // ---------- Allgemein ----------
 export function confirmDialog(text, yes, no) {
@@ -161,10 +163,16 @@ export async function pendingDialog(item) {
     else if (item.kind === 'alliance') text = t('prop.alliance', { fac: L(facName(from)) });
     else if (item.kind === 'sultan') text = t('prop.sultan', { fac: L(facName(from)) });
     else if (item.kind === 'tribute') text = t('prop.tribute', { fac: L(facName(from)), n: item.amount });
+    else if (item.kind === 'buyTown') {
+      const tw = townsOf(item.pid)[item.i];
+      if (!tw || tw.owner !== s.player || atWar(from, s.player) || fac(from).gold < item.price) return;
+      text = t('prop.buyTown', { fac: L(facName(from)), n: item.price, town: L(townName(item.pid, item.i)), prov: L(provName(item.pid)) });
+    }
     const ok = await confirmDialog(text, t('prop.accept'), t('prop.decline'));
     if (item.kind === 'peace') { if (ok) makePeace(from, s.player, item.terms || {}); }
     else if (item.kind === 'trade') { if (ok) setTrade(from, s.player, true); else rel(from, s.player).mod -= 5; }
     else if (item.kind === 'alliance') { if (ok) setAlliance(from, s.player); else rel(from, s.player).mod -= 5; }
+    else if (item.kind === 'buyTown') { if (ok) tradeTown(item.pid, item.i, s.player, from, item.price); else rel(from, s.player).mod -= 6; }
     else if (item.kind === 'tribute') {
       if (ok) { rel(from, s.player).tributeTurn = 0; demandTribute(from, s.player); }
       else { rel(from, s.player).mod -= 20; if (Math.random() < fac(from).ai.aggr * 0.6) declareWar(from, s.player); }
@@ -268,6 +276,8 @@ export function factionScreen() {
           <tr><th>${esc(t('inc.goods'))}</th><td>${fmt(inc.goods)}</td></tr>
           <tr><th>${esc(t('inc.route'))}</th><td>${fmt(inc.route)}</td></tr>
           <tr><th>${esc(t('inc.pasture'))}</th><td>${fmt(inc.pasture)}</td></tr>
+          ${inc.towns ? `<tr><th>🏘 ${esc(t('inc.towns'))}</th><td><small>${fmt(inc.towns)}</small></td></tr>` : ''}
+          ${inc.nEnclaves ? `<tr><th>🏰 ${esc(t('inc.enclaves', { n: inc.nEnclaves }))}</th><td class="pos">+${fmt(inc.enclaves)}</td></tr>` : ''}
           ${inc.tribute ? `<tr><th>${esc(t('inc.tribute'))}</th><td class="pos">+${fmt(inc.tribute)}</td></tr>` : ''}
           ${inc.tributePaid ? `<tr><th>${esc(t('inc.tributePaid'))}</th><td class="neg">−${fmt(inc.tributePaid)}</td></tr>` : ''}
           ${inc.payIn ? `<tr><th>${esc(t('inc.payIn'))}</th><td class="pos">+${fmt(inc.payIn)}</td></tr>` : ''}
@@ -361,6 +371,15 @@ export function logVisible(e) {
   return true;
 }
 
+// Umstrittene Orte zwischen zwei Mächten
+function contestedRow(me, other) {
+  const list = [];
+  for (const [pid, i] of foreignHeld(other)) if (prov(pid).owner === me) list.push(`<a data-act="gotoTown" data-p="${pid}" data-i="${i}">🏰 ${esc(L(townName(pid, i)))}</a> <small class="neg">(${esc(L(provName(pid)))})</small>`);
+  for (const [pid, i] of foreignHeld(me)) if (prov(pid).owner === other) list.push(`<a data-act="gotoTown" data-p="${pid}" data-i="${i}">🏰 ${esc(L(townName(pid, i)))}</a> <small class="pos">(${esc(L(provName(pid)))})</small>`);
+  if (!list.length) return '';
+  return `<tr><th>${esc(t('dip.contested'))}</th><td class="small">${list.join('<br>')}<div class="muted">${esc(t('dip.contestedHint'))}</div></td></tr>`;
+}
+
 // ---------- Diplomatie ----------
 export function diplomacyScreen(initial) {
   let selected = initial && initial !== G.s.player ? initial : null;
@@ -428,6 +447,7 @@ export function diplomacyScreen(initial) {
           <tr><th>${esc(t('dip.power'))}</th><td>${powerCompare(militaryPower(me), militaryPower(selected))}</td></tr>
           <tr><th>${esc(t('dip.opinion'))}</th><td><b>${signed(opinion(me, selected))}</b><div class="opparts">${opinionParts(me, selected).map(([k, v]) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${esc(t(k))} ${signed(v)}</span>`).join('')}</div></td></tr>
           <tr><th>${esc(t('dip.resources'))}</th><td>${resList(selected)}</td></tr>
+          ${contestedRow(me, selected)}
           ${war ? `<tr><th>${esc(t('dip.warscore'))}</th><td>${signed(warScore(me, selected))}</td></tr>` : ''}
           <tr><th>${esc(t('fac.infamy'))}</th><td>${Math.round(f.infamy)}</td></tr>
           ${f.titles.length ? `<tr><th>${esc(t('fac.titles'))}</th><td>${f.titles.map((x) => esc(L(TITLES[x].n))).join(', ')}</td></tr>` : ''}
@@ -452,6 +472,7 @@ export function diplomacyScreen(initial) {
       };
       return {
         sel: (el) => { selected = el.dataset.f; rerender(); },
+        gotoTown: (el) => { close(); UIState.selTown = { pid: el.dataset.p, i: +el.dataset.i }; UIState.tab = 'towns'; UIState.map.centerOn(el.dataset.p, 1.4); selectProvince(el.dataset.p); UIState.tab = 'towns'; refreshAll(false); },
         war: async () => {
           const ok = await confirmDialog(t('dip.warConfirm', { fac: L(facName(selected)) }), t('dip.declareWar'), t('ui.cancel'));
           if (ok) { declareWar(me(), selected); rerender(); }

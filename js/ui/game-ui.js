@@ -22,6 +22,10 @@ import { specialtiesOf } from '../data/specialties.js';
 import { FOCUS, setFocus, goodPrice, monopolies, RESOURCES } from '../game/market.js';
 import { saveAuto } from './saves.js';
 import { canSee, knownRegions } from '../game/discovery.js';
+import { townsOf, townWalls, townContribution, townName, controlOf, foreignTowns, canUpgrade, upgradeTown, townValue, hostileTowns, townGarrisonUnits, townDefenders, townSiegeNeeded } from '../game/towns.js';
+import { TOWN_TYPES, CONTROL } from '../data/towns.js';
+import { proposalAcceptance, tradeTown, provinceBaseFor } from '../game/diplomacy.js';
+import { assaultTown, siegeTargetOf, townDefensePower } from '../game/military.js';
 
 export const UIState = { map: null, tab: 'info', splitSel: new Set(), onExit: null };
 
@@ -51,6 +55,14 @@ function makeGameAccess() {
     armyMenText: (a) => fmt(armyMen(a)),
     pathMarks: (a, path) => pathTurns(a, path),
     visible: (pid) => G.s.observer || canSee(G.s.player, pid),
+    townInfo: (pid) => {
+      const p = G.s.provinces[pid];
+      return (p.towns || []).map((tw, i) => ({
+        t: tw.t, lvl: tw.lvl, color: G.s.factions[tw.owner]?.color || '#777', foreign: tw.owner !== p.owner,
+        mine: tw.owner === G.s.player, hostile: atWar(G.s.player, tw.owner), siege: !!tw.siege, name: townName(pid, i),
+      }));
+    },
+    selTown: () => UIState.selTown,
     knownRegions: () => (G.s.observer ? knownRegions(null) : knownRegions(G.s.player)),
   };
 }
@@ -75,6 +87,13 @@ function provColor(pid, mode) {
       const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
       const col = { eco: '#c9a227', cul: '#7b4fa0', mil: '#a8322a' }[top[0]];
       return rgb(col, 60 + top[1] * 45);
+    }
+    case 'control': {
+      const c = controlOf(pid);
+      if (c === 'none') return [180, 170, 140, 60];
+      if (c === 'full') return p.owner === s.player ? [60, 150, 60, 150] : [120, 160, 110, 90];
+      const n = foreignTowns(pid);
+      return [200, 90 - n * 20, 40, 120 + n * 25];
     }
     case 'order': {
       const o = p.order / 100;
@@ -193,7 +212,7 @@ export function renderTopbar() {
   document.documentElement.style.setProperty('--tbh', $('#topbar').offsetHeight + 'px');
 }
 
-const MODES = ['political', 'terrain', 'religion', 'culture', 'special', 'diplomacy', 'order', 'trade'];
+const MODES = ['political', 'control', 'terrain', 'religion', 'culture', 'special', 'diplomacy', 'order', 'trade'];
 function renderMapModes() {
   const m = UIState.map.mode;
   $('#mapmodes').innerHTML = MODES.map((k) => `<button data-act="mode" data-mode="${k}" class="${k === m ? 'on' : ''}">${esc(t('mode.' + k))}</button>`).join('');
@@ -208,6 +227,7 @@ function renderLegend() {
   else if (m === 'special') html = [['#c9a227', 'spec.eco'], ['#7b4fa0', 'spec.cul'], ['#a8322a', 'spec.mil']].map(([c, k]) => `<span>${swatch(c)}${esc(t(k))}</span>`).join('');
   else if (m === 'terrain') html = Object.entries(TERRAINS).map(([k, c]) => `<span>${swatch(c.color)}${esc(L(c.n))}</span>`).join('');
   else if (m === 'diplomacy') html = [['#c9a227', 'dip.self'], ['#e2c86e', 'dip.vassal'], ['#3c963c', 'dip.ally'], ['#be281e', 'dip.war'], ['#4678b4', 'dip.trade'], ['#969696', 'dip.truce']].map(([c, k]) => `<span>${swatch(c)}${esc(t(k))}</span>`).join('');
+  else if (m === 'control') html = [['#3c963c', 'tw.legFull'], ['#78a06e', 'tw.legFullOther'], ['#c85a28', 'tw.legDivided']].map(([c, k]) => `<span>${swatch(c)}${esc(t(k))}</span>`).join('');
   else if (m === 'order') html = `<span>${swatch('#c83c32')}0</span><span>${swatch('#8c8232')}50</span><span>${swatch('#32be32')}100</span>`;
   else if (m === 'trade') html = `<span>${swatch('#a01e1e')}${esc(t('legend.silk'))}</span><span>${swatch('#6e4614')}${esc(t('legend.routes'))}</span>`;
   el.innerHTML = html;
@@ -225,8 +245,17 @@ function nextArmy() {
   selectArmy(a.id);
 }
 
-function onHover(pid, cx, cy, hoverArmy) {
+function onHover(pid, cx, cy, hoverArmy, hoverTown) {
   const tip = $('#tooltip');
+  if (hoverTown && !hoverArmy && !modalOpen()) {
+    const { pid: tp, i } = hoverTown;
+    const tw = townsOf(tp)[i], T = TOWN_TYPES[tw.t];
+    tip.innerHTML = `<b>${T.icon} ${esc(L(townName(tp, i)))}</b> <small>${esc(L(T.n))} ${'★'.repeat(tw.lvl)}</small><br>${swatch(fac(tw.owner)?.color || '#777')}${esc(L(facName(tw.owner)))}<br><small>${esc(L(pdef(tp).n))} · ${'▮'.repeat(townWalls(tp, i)) || esc(t('tw.open'))}${tw.siege ? ` · ⚔ ${tw.siege.turns}/${tw.siege.needed}` : ''}</small>`;
+    tip.style.display = 'block';
+    tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, cx + 16) + 'px';
+    tip.style.top = Math.min(window.innerHeight - tip.offsetHeight - 8, cy + 16) + 'px';
+    return;
+  }
   if (hoverArmy && !modalOpen()) {
     const a = hoverArmy, g = chr(a.gen);
     tip.innerHTML = `<b>⚑ ${esc(armyTitle(a))}</b><br>${swatch(fac(a.fac).color)}${esc(L(facName(a.fac)))}<br><small>${fmt(armyMen(a))} · ${a.units.length} ${esc(t('army.units'))}${g ? ` · ⚔${stat(g, 'mar')}` : ''}${a.stance && a.stance !== 'normal' ? ` · ${STANCE_ICON[a.stance]} ${esc(t('stance.' + a.stance))}` : ''}</small>`;
@@ -268,7 +297,7 @@ export function selectProvince(pid) {
   const m = UIState.map;
   m.sel = { prov: pid, army: null };
   m.preview = null;
-  if (UIState.tab !== 'info' && prov(pid).owner !== G.s.player) UIState.tab = 'info';
+  if (!['info', 'towns'].includes(UIState.tab) && prov(pid).owner !== G.s.player) UIState.tab = 'info';
   renderPanel();
   m.invalidate();
 }
@@ -302,6 +331,8 @@ function onMapClick(hit) {
     return;
   }
   if (hit.army) { selectArmy(hit.army.id); return; }
+  if (hit.town) { UIState.selTown = hit.town; UIState.tab = 'towns'; selectProvince(hit.town.pid); UIState.tab = 'towns'; renderPanel(); return; }
+  UIState.selTown = null;
   if (hit.prov) selectProvince(hit.prov);
   else clearSelection();
 }
@@ -431,7 +462,7 @@ export function renderPanel() {
 function provincePanel(pid) {
   const s = G.s, p = prov(pid), d = pdef(pid), f = fac(p.owner);
   const mine = p.owner === s.player;
-  const tabs = mine ? ['info', 'build', 'recruit'] : ['info'];
+  const tabs = mine ? ['info', 'towns', 'build', 'recruit'] : ['info', 'towns'];
   const tab = tabs.includes(UIState.tab) ? UIState.tab : 'info';
   let html = `<div class="panel-head" style="--fc:${f.color}">
     <button class="panel-x" data-act="close">×</button>
@@ -441,6 +472,7 @@ function provincePanel(pid) {
   if (tabs.length > 1) html += `<div class="tabs">${tabs.map((k) => `<button data-act="tab" data-tab="${k}" class="${k === tab ? 'on' : ''}">${esc(t('tab.' + k))}</button>`).join('')}</div>`;
   html += `<div class="panel-body">`;
   if (tab === 'info') html += provinceInfo(pid);
+  if (tab === 'towns') html += townsTab(pid);
   if (tab === 'build') html += buildTab(pid);
   if (tab === 'recruit') html += recruitTab(pid);
   html += `</div>`;
@@ -464,6 +496,7 @@ function provinceInfo(pid) {
     <tr><th>${esc(t('prov.goods'))}</th><td>${[...d.goods, ...(p.extraGoods || [])].map((g) => { const pr = goodPrice(p.owner, g); const mono = monopolies(p.owner).includes(g); return `<span class="good" title="${esc(L(GOODS[g].n))}: ${esc(t('mk.price'))} ${Math.round(pr * 100)}%${mono ? ' · ' + esc(t('mk.monopoly')) : ''}">${GOODS[g].icon} ${esc(L(GOODS[g].n))} <small class="${pr >= 1.05 ? 'pos' : pr <= 0.95 ? 'neg' : 'muted'}">${pr >= 1.05 ? '▲' : pr <= 0.95 ? '▼' : '●'}${mono ? '👑' : ''}</small></span>`; }).join(' ')}</td></tr>
     ${routes.length ? `<tr><th>${esc(t('prov.routes'))}</th><td><small>${routes.map(esc).join('<br>')}</small></td></tr>` : ''}
     <tr><th>${esc(t('prov.walls'))}</th><td>${'▮'.repeat(effectiveWalls(pid)) || '—'} <small>${esc(t('prov.garrison'))} ${Math.round(p.garrison * 100)}%</small></td></tr>
+    ${townsOf(pid).length ? `<tr><th>${esc(t('tw.control'))}</th><td><a data-act="tab" data-tab="towns">${controlText(pid)}</a><div class="townicons">${townsOf(pid).map((tw, i) => `<span title="${esc(L(townName(pid, i)))} · ${esc(L(TOWN_TYPES[tw.t].n))} · ${esc(L(facName(tw.owner)))}" style="border-color:${fac(tw.owner)?.color || '#777'}" class="${tw.owner !== p.owner ? 'foreign' : ''}">${TOWN_TYPES[tw.t].icon}</span>`).join('')}</div></td></tr>` : ''}
     <tr><th>${esc(t('prov.income'))}</th><td><small>${esc(t('inc.tax'))} ${fmt(inc.tax)} · ${esc(t('inc.goods'))} ${fmt(inc.goods)} · ${esc(t('inc.route'))} ${fmt(inc.route)} · ${esc(t('inc.pasture'))} ${fmt(inc.pasture)}<br>🐎 ${fmt(inc.horses)} · 📜 ${fmt(inc.research)}</small></td></tr>
   </table>`;
   // Regionale Besonderheiten
@@ -490,6 +523,61 @@ function provinceInfo(pid) {
   if (p.owner !== s.player) {
     html += `<div class="actions"><button data-act="dipWith" data-fac="${p.owner}">🤝 ${esc(t('ui.diplomacy'))}</button></div>`;
   }
+  return html;
+}
+
+function controlText(pid) {
+  const c = controlOf(pid);
+  if (c === 'full') return `<span class="pos">✓ ${esc(t('tw.full', { n: Math.round(CONTROL.bonus * 100), o: CONTROL.order }))}</span>`;
+  const n = foreignTowns(pid);
+  return `<span class="neg">⚠ ${esc(t('tw.divided', { n, loss: Math.round(Math.min(0.4, CONTROL.dividedLoss * n) * 100), o: Math.min(CONTROL.dividedMaxOrder, n * CONTROL.dividedOrder) }))}</span>`;
+}
+
+// Reiter „Städte“: Hauptstadt und Orte der Provinz
+function townsTab(pid) {
+  const s = G.s, p = prov(pid), me = s.player, d = pdef(pid);
+  const base = provinceBaseFor(pid);
+  const myArmies = armiesIn(pid).filter((a) => a.fac === me && a.units.length);
+  let html = `<div class="note">${controlText(pid)}</div>`;
+  html += `<div class="muted small">${esc(t('tw.hint'))}</div>`;
+  // Hauptstadt
+  html += `<div class="town cap"><span class="tico">👑</span><div class="tmain"><b>${esc(L(d.city))}</b> <small>${esc(t('tw.capital'))}</small>
+    <div class="small">${swatch(fac(p.owner).color)}${esc(L(facName(p.owner)))} · ${'▮'.repeat(effectiveWalls(pid)) || '—'} · ${esc(t('prov.garrison'))} ${Math.round(p.garrison * 100)}%${p.siege ? ` · <span class="neg">⚔ ${p.siege.turns}/${p.siege.needed}</span>` : ''}</div></div></div>`;
+  townsOf(pid).forEach((tw, i) => {
+    const T = TOWN_TYPES[tw.t];
+    const c = townContribution(pid, i, base);
+    const owner = fac(tw.owner);
+    const sel = UIState.selTown && UIState.selTown.pid === pid && UIState.selTown.i === i;
+    const acts = [];
+    if (tw.owner === me) {
+      const cu = canUpgrade(me, pid, i);
+      if (cu.cost !== null) acts.push(`<button data-act="townUp" data-i="${i}" ${cu.ok ? '' : 'disabled'} title="${esc(cu.reason === 'order' ? t('tw.needOrder') : '')}">⬆ ${esc(t('tw.upgrade'))} 💰${cu.cost}</button>`);
+      if (p.owner !== me && !atWar(me, p.owner)) {
+        const price = townValue(pid, i, base);
+        acts.push(`<button data-act="townSell" data-i="${i}">💰 ${esc(t('tw.sell', { n: price }))}</button>`);
+        acts.push(`<button data-act="townCede" data-i="${i}">🎁 ${esc(t('tw.cede'))}</button>`);
+      }
+    } else if (atWar(me, tw.owner)) {
+      if (myArmies.length) {
+        const a = myArmies.find((x) => x.id === UIState.map.sel.army) || myArmies[0];
+        const tp = townDefensePower(pid, i, a);
+        acts.push(`<button data-act="townSiege" data-i="${i}" class="${a.siegeTown === i ? 'on' : ''}">⛺ ${esc(t('tw.besiege'))}</button>`);
+        acts.push(`<button data-act="townAssault" data-i="${i}" ${a.mp <= 0 ? 'disabled' : ''}>🏰 ${esc(t('act.assault'))} <small>(${oddsText(armyPower(a), tp)})</small></button>`);
+      }
+    } else if (p.owner === me && tw.owner !== 'rebels') {
+      const price = Math.round(townValue(pid, i, base) * 1.15);
+      acts.push(`<button data-act="townBuy" data-i="${i}" ${fac(me).gold >= price ? '' : 'disabled'}>💰 ${esc(t('tw.buy', { n: price }))}</button>`);
+    }
+    html += `<div class="town ${tw.owner !== p.owner ? 'foreign' : ''} ${sel ? 'sel' : ''}">
+      <span class="tico" style="border-color:${owner?.color || '#777'}">${T.icon}</span>
+      <div class="tmain"><b>${esc(L(townName(pid, i)))}</b> <small>${esc(L(T.n))} ${'★'.repeat(tw.lvl)}</small>
+        <div class="small">${swatch(owner?.color || '#777')}<a data-act="dipWith" data-fac="${tw.owner}">${esc(L(facName(tw.owner)))}</a> · ${'▮'.repeat(townWalls(pid, i)) || esc(t('tw.open'))} · ${esc(t('prov.garrison'))} ${Math.round(tw.gar * 100)}%
+          ${tw.siege ? ` · <span class="neg">⚔ ${esc(L(facName(tw.siege.fac)))} ${tw.siege.turns}/${tw.siege.needed}</span>` : ''}</div>
+        <div class="small muted">${esc(L(T.desc))}</div>
+        <div class="small">${esc(t('tw.yields'))}: 💰${fmt(c.gold)}${c.horses ? ` 🐎${fmt(c.horses)}` : ''}${c.research ? ` 📜${fmt(c.research)}` : ''}${c.prestige ? ` ⭐${fmt(c.prestige)}` : ''}</div>
+        ${acts.length ? `<div class="tacts">${acts.join('')}</div>` : ''}
+      </div></div>`;
+  });
   return html;
 }
 
@@ -636,6 +724,18 @@ function armyPanel(a) {
       if (p.siege && p.siege.fac === a.fac) html += `<div class="note">⚔ ${esc(t('prov.siegeProgress', { n: p.siege.turns, m: p.siege.needed }))}</div>`;
       else if (!a.raid) html += `<div class="note">${esc(t('prov.siegeWillStart', { m: siegeNeeded(a.prov) }))}</div>`;
     }
+    // Orte in der Provinz
+    const hts = hostileTowns(a.fac, a.prov);
+    if (hts.length) {
+      const tgt = siegeTargetOf(a);
+      html += `<h4>${esc(t('tw.siegeTarget'))}</h4><div class="stancerow">${hostile ? `<button data-act="siegeCap" class="${tgt === 'capital' ? 'on' : ''}">👑 ${esc(L(pdef(a.prov).city))}</button>` : ''}${hts.map((i) => `<button data-act="townSiege" data-i="${i}" class="${tgt === i ? 'on' : ''}">${TOWN_TYPES[townsOf(a.prov)[i].t].icon} ${esc(L(townName(a.prov, i)))} ${'▮'.repeat(townWalls(a.prov, i))}</button>`).join('')}</div>`;
+      if (tgt !== 'capital' && tgt !== null) {
+        const tw = townsOf(a.prov)[tgt];
+        const tp = townDefensePower(a.prov, tgt, a);
+        acts.push(`<button data-act="townAssault" data-i="${tgt}" ${a.mp <= 0 ? 'disabled' : ''}>🏰 ${esc(t('tw.assault', { town: L(townName(a.prov, tgt)) }))} <small>(${esc(t('act.odds'))}: ${oddsText(armyPower(a), tp)})</small></button>`);
+        html += `<div class="note">${tw.siege && tw.siege.fac === a.fac ? esc(t('prov.siegeProgress', { n: tw.siege.turns, m: tw.siege.needed })) : esc(t('prov.siegeWillStart', { m: townSiegeNeeded(a.prov, tgt) }))}</div>`;
+      }
+    }
     const others = armiesIn(a.prov).filter((x) => x.fac === a.fac && x.id !== a.id);
     for (const o of others) acts.push(`<button data-act="merge" data-id="${o.id}">⇆ ${esc(t('act.merge', { name: armyTitle(o) }))}</button>`);
     if (acts.length) html += `<div class="actions">${acts.join('')}</div>`;
@@ -704,6 +804,42 @@ const panelHandlers = {
     if (G.s.armies[a.id]) selectArmy(a.id); else clearSelection();
     refreshAll();
   },
+  townUp: (el) => { const pid = UIState.map.sel.prov; if (upgradeTown(G.s.player, pid, +el.dataset.i)) { toast(t('tw.upgraded')); refreshAll(false); } },
+  townSiege: (el) => {
+    const pid = UIState.map.sel.prov;
+    const a = army(UIState.map.sel.army) || armiesIn(pid).find((x) => x.fac === G.s.player && x.units.length);
+    if (!a) return;
+    a.siegeTown = +el.dataset.i; a.raid = false;
+    const p = prov(a.prov); if (p.siege && p.siege.fac === a.fac) p.siege = null;
+    renderPanel(); UIState.map.invalidate();
+  },
+  siegeCap: () => { const a = army(UIState.map.sel.army); if (a) { a.siegeTown = null; renderPanel(); } },
+  townAssault: async (el) => {
+    const pid = UIState.map.sel.prov;
+    const a = army(UIState.map.sel.army) || armiesIn(pid).find((x) => x.fac === G.s.player && x.units.length && x.mp > 0);
+    if (!a) return;
+    await assaultTown(a, +el.dataset.i);
+    await flushReports();
+    if (G.s.armies[a.id] && UIState.map.sel.army) selectArmy(a.id);
+    refreshAll();
+  },
+  townBuy: (el) => {
+    const pid = UIState.map.sel.prov, i = +el.dataset.i;
+    const tw = townsOf(pid)[i];
+    const price = Math.round(townValue(pid, i, provinceBaseFor(pid)) * 1.15);
+    if (proposalAcceptance('buyTown', G.s.player, tw.owner, { pid, i, price }) > 0) { tradeTown(pid, i, tw.owner, G.s.player, price); toast(t('dip.accepted')); }
+    else toast(t('dip.refused'));
+    refreshAll();
+  },
+  townSell: (el) => {
+    const pid = UIState.map.sel.prov, i = +el.dataset.i;
+    const price = townValue(pid, i, provinceBaseFor(pid));
+    const to = prov(pid).owner;
+    if (proposalAcceptance('sellTown', G.s.player, to, { pid, i, price }) > 0) { tradeTown(pid, i, G.s.player, to, price); toast(t('dip.accepted')); }
+    else toast(t('dip.refused'));
+    refreshAll();
+  },
+  townCede: (el) => { const pid = UIState.map.sel.prov; tradeTown(pid, +el.dataset.i, G.s.player, prov(pid).owner, 0); toast(t('tw.ceded')); refreshAll(); },
   raid: () => { const a = army(UIState.map.sel.army); if (a) { a.raid = !a.raid; if (a.raid) { const p = prov(a.prov); if (p.siege && p.siege.fac === a.fac) p.siege = null; } renderPanel(); UIState.map.invalidate(); } },
   merge: (el) => { const a = army(UIState.map.sel.army), b = army(el.dataset.id); if (a && b) { mergeArmies(a, b); UIState.splitSel.clear(); refreshAll(false); } },
   split: () => {

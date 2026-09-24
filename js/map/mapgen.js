@@ -4,6 +4,7 @@ import { WORLD_W, WORLD_H, project, WATER, ISLANDS, WASTELANDS, SEA_LINKS } from
 import { PROVINCES } from '../data/provinces.js';
 import { mulberry32 } from '../util.js';
 import { REGION_IDS } from '../data/regions.js';
+import { PROVINCE_TOWNS } from '../data/towns.js';
 
 export const CELL = 2;
 
@@ -186,7 +187,66 @@ export function generateMap() {
 
   const provIndex = Object.fromEntries(provinces.map((p) => [p.id, p]));
   const regions = buildRegionGrid(ids, gw, gh, nP);
-  return { gw, gh, ids, water, nP, provinces, provIndex, borders, seaLinks, wastelandOffset: nP, regions, regionIds: REGION_IDS };
+  const towns = placeTowns(ids, water, gw, gh, provinces);
+  return { gw, gh, ids, water, nP, provinces, provIndex, borders, seaLinks, wastelandOffset: nP, regions, regionIds: REGION_IDS, towns };
+}
+
+// Lage der Orte innerhalb ihrer Provinz: möglichst weit von Hauptstadt und einander entfernt,
+// nicht direkt an der Grenze; Häfen an der Küste
+function placeTowns(ids, water, gw, gh, provinces) {
+  const nP = provinces.length;
+  const K = 260;
+  const samples = Array.from({ length: nP }, () => []);
+  const seen = new Int32Array(nP);
+  const rnd = mulberry32(1453);
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (id < 0 || id >= nP) continue;
+    const n = ++seen[id];
+    if (samples[id].length < K) samples[id].push(i);
+    else { const j = Math.floor(rnd() * n); if (j < K) samples[id][j] = i; }
+  }
+  const depth = (x, y, id) => {
+    let dmin = 14;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      for (let k = 1; k < dmin; k++) {
+        const xx = x + dx * k, yy = y + dy * k;
+        if (xx < 0 || yy < 0 || xx >= gw || yy >= gh || ids[yy * gw + xx] !== id) { dmin = k; break; }
+      }
+    }
+    return dmin;
+  };
+  const nearWater = (x, y) => {
+    for (let r = 1; r <= 7; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r]]) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < gw && yy < gh && water[yy * gw + xx]) return r;
+    }
+    return 99;
+  };
+  const out = {};
+  provinces.forEach((p, id) => {
+    const list = PROVINCE_TOWNS[p.id] || [];
+    const pts = [[p.x / CELL, p.y / CELL]];
+    const res = [];
+    const cand = samples[id].map((i) => ({ x: i % gw, y: Math.floor(i / gw) })).map((c) => ({ ...c, d: depth(c.x, c.y, id) }));
+    const span = Math.max(8, Math.hypot(p.bbox[2] - p.bbox[0], p.bbox[3] - p.bbox[1]) / CELL);
+    for (const [, type] of list) {
+      let best = null, bv = -Infinity;
+      for (const c of cand) {
+        const md = Math.min(...pts.map(([x, y]) => Math.hypot(c.x - x, c.y - y)));
+        if (md < 5) continue;
+        let v = Math.min(md, span * 0.45) + Math.min(c.d, 8) * 1.4 + rnd() * 3;
+        if (type === 'port') { const w = nearWater(c.x, c.y); v += w <= 7 ? 30 - w * 3 : -20; }
+        if (c.d < 3) v -= 15;
+        if (v > bv) { bv = v; best = c; }
+      }
+      if (!best) best = { x: pts[0][0] + 6 * (res.length + 1), y: pts[0][1] + 4 };
+      pts.push([best.x, best.y]);
+      res.push({ x: best.x * CELL + CELL / 2, y: best.y * CELL + CELL / 2 });
+    }
+    out[p.id] = res;
+  });
+  return out;
 }
 
 // Weltgegend je Zelle: Land nach seinem Kern, Wasser und namenloses Land nach der nächsten Landzelle

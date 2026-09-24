@@ -7,6 +7,7 @@ import { CELL } from './mapgen.js';
 import { mulberry32, hexToRgb } from '../util.js';
 import { L, t } from '../i18n.js';
 import { REGIONS, REGION_IDS } from '../data/regions.js';
+import { PROVINCE_TOWNS } from '../data/towns.js';
 
 const WASTE_COLORS = { desert: '#e2cd92', mountain: '#b8a480', forest: '#a8b07c', steppe: '#d6c78c', hills: '#c9b98a', plains: '#cdc690' };
 const INK = '#3e2f1f';
@@ -184,6 +185,9 @@ export class MapView {
       ctx.stroke();
     }
     ctx.restore();
+    // Dörfer und Landstraßen innerhalb der Provinzen
+    this.drawVillages(ctx);
+    this.drawLocalRoads(ctx);
     // Kompassrose
     this.drawCompass(ctx, ...project(64.5, 15.5), 70);
     this.drawCompass(ctx, ...project(-9.0, 46.0), 60);
@@ -263,6 +267,139 @@ export class MapView {
         }
       }
     }
+  }
+
+  drawVillages(ctx) {
+    const { gw, ids, nP } = this.map;
+    const rnd = mulberry32(777);
+    ctx.save();
+    for (const p of this.map.provinces) {
+      const d = PROVINCES[p.index];
+      const dens = { farmland: 1, river: 1.1, oasis: 0.8, hills: 0.6, forest: 0.4, mountain: 0.25, steppe: 0.2, desert: 0.08 }[d.terrain] || 0.3;
+      const n = Math.round(Math.min(26, d.pop / 18) * dens);
+      const [x0, y0, x1, y1] = p.bbox;
+      let placed = 0;
+      for (let k = 0; k < n * 6 && placed < n; k++) {
+        const x = x0 + rnd() * (x1 - x0), y = y0 + rnd() * (y1 - y0);
+        if (ids[Math.floor(y / CELL) * gw + Math.floor(x / CELL)] !== p.index) continue;
+        if (Math.hypot(x - p.x, y - p.y) < 14) continue;
+        placed++;
+        // kleines Dorf: zwei, drei Häuschen
+        const m = 1 + Math.floor(rnd() * 3);
+        for (let h = 0; h < m; h++) {
+          const hx = x + (rnd() - 0.5) * 5, hy = y + (rnd() - 0.5) * 4;
+          ctx.fillStyle = 'rgba(95,70,40,0.55)';
+          ctx.fillRect(hx - 1.1, hy - 0.8, 2.2, 1.8);
+          ctx.beginPath(); ctx.moveTo(hx - 1.5, hy - 0.8); ctx.lineTo(hx, hy - 2.2); ctx.lineTo(hx + 1.5, hy - 0.8); ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  drawLocalRoads(ctx) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,85,45,0.38)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([1.5, 2.5]);
+    for (const p of this.map.provinces) {
+      for (const t of this.map.towns?.[p.id] || []) {
+        const mx = (p.x + t.x) / 2 + (t.y - p.y) * 0.12, my = (p.y + t.y) / 2 - (t.x - p.x) * 0.12;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(mx, my, t.x, t.y); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // Ortssymbole
+  townGlyph(ctx, type, x, y, s, fill) {
+    ctx.fillStyle = fill; ctx.strokeStyle = INK; ctx.lineWidth = 0.9 * s;
+    ctx.beginPath();
+    switch (type) {
+      case 'castle':
+        ctx.moveTo(x - 4 * s, y + 3.5 * s); ctx.lineTo(x - 4 * s, y - 3 * s); ctx.lineTo(x - 2.4 * s, y - 3 * s); ctx.lineTo(x - 2.4 * s, y - 1.8 * s);
+        ctx.lineTo(x - 0.8 * s, y - 1.8 * s); ctx.lineTo(x - 0.8 * s, y - 3 * s); ctx.lineTo(x + 0.8 * s, y - 3 * s); ctx.lineTo(x + 0.8 * s, y - 1.8 * s);
+        ctx.lineTo(x + 2.4 * s, y - 1.8 * s); ctx.lineTo(x + 2.4 * s, y - 3 * s); ctx.lineTo(x + 4 * s, y - 3 * s); ctx.lineTo(x + 4 * s, y + 3.5 * s); ctx.closePath();
+        break;
+      case 'port':
+        ctx.arc(x, y, 3.4 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.strokeStyle = INK; ctx.lineWidth = 0.8 * s;
+        ctx.moveTo(x, y - 2.2 * s); ctx.lineTo(x, y + 2.2 * s); ctx.moveTo(x - 1.6 * s, y + 1 * s); ctx.quadraticCurveTo(x, y + 3 * s, x + 1.6 * s, y + 1 * s); ctx.moveTo(x - 1.2 * s, y - 1 * s); ctx.lineTo(x + 1.2 * s, y - 1 * s);
+        ctx.stroke(); return;
+      case 'mine':
+        ctx.moveTo(x - 3.6 * s, y + 3 * s); ctx.lineTo(x, y - 3.4 * s); ctx.lineTo(x + 3.6 * s, y + 3 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.fillStyle = INK; ctx.arc(x, y + 1.2 * s, 1 * s, Math.PI, 0); ctx.fill(); return;
+      case 'monastery':
+      case 'holy':
+        ctx.moveTo(x - 3 * s, y + 3.2 * s); ctx.lineTo(x - 3 * s, y - 0.6 * s); ctx.arc(x, y - 0.6 * s, 3 * s, Math.PI, 0); ctx.lineTo(x + 3 * s, y + 3.2 * s); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y - 3.6 * s); ctx.lineTo(x, y - 5.6 * s); ctx.moveTo(x - 1 * s, y - 4.8 * s); ctx.lineTo(x + 1 * s, y - 4.8 * s); ctx.stroke();
+        if (type === 'holy') { ctx.fillStyle = '#c9a227'; ctx.beginPath(); ctx.arc(x, y + 0.8 * s, 1.1 * s, 0, Math.PI * 2); ctx.fill(); }
+        return;
+      case 'camp':
+        ctx.moveTo(x - 4 * s, y + 3 * s); ctx.lineTo(x, y - 3.5 * s); ctx.lineTo(x + 4 * s, y + 3 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y - 3.5 * s); ctx.lineTo(x, y - 5.5 * s); ctx.stroke(); return;
+      case 'caravan':
+        ctx.rect(x - 3.4 * s, y - 3 * s, 6.8 * s, 6 * s); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.fillStyle = 'rgba(245,235,205,0.9)'; ctx.rect(x - 1.5 * s, y - 1.2 * s, 3 * s, 2.4 * s); ctx.fill(); return;
+      case 'market':
+        ctx.arc(x, y, 3 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.fillStyle = INK; ctx.arc(x, y, 0.9 * s, 0, Math.PI * 2); ctx.fill(); return;
+      default: // Stadt: Häusergruppe
+        ctx.moveTo(x - 4 * s, y + 3 * s); ctx.lineTo(x - 4 * s, y - 0.5 * s); ctx.lineTo(x - 2 * s, y - 2.5 * s); ctx.lineTo(x, y - 0.5 * s);
+        ctx.lineTo(x, y - 1.5 * s); ctx.lineTo(x + 2 * s, y - 3.5 * s); ctx.lineTo(x + 4 * s, y - 1.5 * s); ctx.lineTo(x + 4 * s, y + 3 * s); ctx.closePath();
+    }
+    ctx.fill(); ctx.stroke();
+  }
+
+  drawTowns(ctx, z, g) {
+    if (z < 0.7 || !g.townInfo || !this.map.towns) return;
+    const s = Math.min(1.6, Math.max(0.7, 1 / z)) ;
+    const sel = g.selTown ? g.selTown() : null;
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const p of this.map.provinces) {
+      if (!this.visible(p.id)) continue;
+      const pos = this.map.towns[p.id];
+      if (!pos || !pos.length) continue;
+      const infos = g.townInfo(p.id);
+      infos.forEach((ti, i) => {
+        const { x, y } = pos[i];
+        const k = s * (0.85 + ti.lvl * 0.15);
+        if (ti.foreign || ti.mine) {
+          ctx.fillStyle = ti.hostile ? 'rgba(180,30,20,0.35)' : 'rgba(255,245,210,0.55)';
+          ctx.beginPath(); ctx.arc(x, y, 6.5 * k, 0, Math.PI * 2); ctx.fill();
+        }
+        if (sel && sel.pid === p.id && sel.i === i) {
+          ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.arc(x, y, 8 * k, 0, Math.PI * 2); ctx.stroke();
+        }
+        this.townGlyph(ctx, ti.t, x, y, k, ti.color);
+        if (ti.siege) { ctx.font = `bold ${8 * s}px serif`; ctx.fillStyle = '#8b0000'; ctx.fillText('⚔', x + 5 * k, y - 9 * k); }
+        if (z >= 1.35) {
+          ctx.font = `italic ${8.5 * s / Math.max(1, z * 0.7)}px "EB Garamond", Georgia, serif`;
+          ctx.lineWidth = 2.5 / z; ctx.strokeStyle = 'rgba(245,235,205,0.8)';
+          const nm = L(ti.name);
+          ctx.strokeText(nm, x, y + 4.5 * k);
+          ctx.fillStyle = 'rgba(40,28,15,0.9)'; ctx.fillText(nm, x, y + 4.5 * k);
+        }
+      });
+    }
+    ctx.restore();
+  }
+
+  townAt(wx, wy) {
+    if (!this.game?.townInfo || this.cam.z < 0.7 || !this.map.towns) return null;
+    const s = Math.min(1.6, Math.max(0.7, 1 / this.cam.z));
+    let best = null, bd = 7 * s;
+    for (const p of this.map.provinces) {
+      const pos = this.map.towns[p.id];
+      if (!pos) continue;
+      const [x0, y0, x1, y1] = p.bbox;
+      if (wx < x0 - 10 || wx > x1 + 10 || wy < y0 - 10 || wy > y1 + 10) continue;
+      if (!this.visible(p.id)) continue;
+      pos.forEach((t, i) => { const d = Math.hypot(t.x - wx, t.y - wy); if (d < bd) { bd = d; best = { pid: p.id, i }; } });
+    }
+    return best;
   }
 
   peak(ctx, x, y, s) {
@@ -536,6 +673,7 @@ export class MapView {
     }
     if (this.mode === 'trade') this.drawRoutes(ctx, z);
     this.drawLabels(ctx, z, g);
+    this.drawTowns(ctx, z, g);
     this.drawCities(ctx, z, g);
     this.drawPreview(ctx, z);
     this.drawArmies(ctx, z, g);
@@ -942,7 +1080,10 @@ export class MapView {
       const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
       const pid = this.provinceAt(wx, wy);
       if (pid !== this.hoverProv) { this.hoverProv = pid; this.invalidate(); }
-      this.emit('hover', pid, e.clientX, e.clientY, this.armyAt(wx, wy));
+      const town = this.townAt(wx, wy);
+      const tkey = town ? town.pid + ':' + town.i : null;
+      if (tkey !== this.hoverTown) { this.hoverTown = tkey; }
+      this.emit('hover', pid, e.clientX, e.clientY, this.armyAt(wx, wy), town);
     });
     const up = (e) => {
       pointers.delete(e.pointerId);
@@ -957,7 +1098,7 @@ export class MapView {
         const army = this.armyAt(wx, wy);
         const pid = this.provinceAt(wx, wy);
         if (drag.button === 2) this.emit('rightclick', { army, prov: pid });
-        else this.emit('click', { army, prov: pid, shift: e.shiftKey });
+        else this.emit('click', { army, prov: pid, shift: e.shiftKey, town: army ? null : this.townAt(wx, wy) });
       }
       drag = null;
     };

@@ -13,6 +13,9 @@ import { RELIGIONS, CULTURES, TERRAINS } from '../data/world.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { clamp } from '../util.js';
 import { knows, knownRegions } from './discovery.js';
+import { townsOf, townWalls, hostileTowns, townContribution, upgradeTown, canUpgrade, foreignHeld, contestedWith, townValue, townDefenders, townGarrisonUnits } from './towns.js';
+import { tradeTown, provinceBaseFor } from './diplomacy.js';
+import { assaultTown, townDefensePower } from './military.js';
 
 export async function aiTurn(fid) {
   const f = fac(fid);
@@ -140,6 +143,7 @@ function aiDiplomacy(f) {
       v -= f.infamy / 80;
       if (n === s.player) v += 0.1 * f.ai.aggr;
       if (RELIGIONS[fac(n).religion].group !== RELIGIONS[f.religion].group) v += 0.15;
+      if (contestedWith(me, n)) v += 0.35;
       const goals = FACTIONS[me]?.goals || [];
       if (goals.some((g) => g.p && g.p.some((p) => prov(p).owner === n))) v += 0.3;
       if (v > bv) { bv = v; best = n; }
@@ -190,6 +194,20 @@ function aiDiplomacy(f) {
     const small = nbs.filter((n) => factionProvinces(n).length <= 2 && !fac(n).overlord && n !== 'rebels')[0];
     if (small && small !== s.player && proposalAcceptance('vassalize', me, small) > 0) makeVassal(small, me);
   }
+  // Fremde Orte im eigenen Land zurückkaufen
+  if (f.gold > 400 && rng().chance(0.15)) {
+    for (const pid of factionProvinces(me)) {
+      const i = townsOf(pid).findIndex((t) => t.owner !== me && t.owner !== 'rebels' && fac(t.owner)?.alive && !atWar(me, t.owner));
+      if (i < 0) continue;
+      const owner = townsOf(pid)[i].owner;
+      const price = Math.round(townValue(pid, i, provinceBaseFor(pid)) * rng().range(1.1, 1.4));
+      if (price > f.gold - 200) continue;
+      if (owner === s.player) {
+        if (!s.pending.some((x) => x.kind === 'buyTown' && x.from === me)) s.pending.push({ type: 'proposal', kind: 'buyTown', from: me, pid, i, price });
+      } else if (proposalAcceptance('buyTown', me, owner, { pid, i, price }) > 0) tradeTown(pid, i, owner, me, price);
+      break;
+    }
+  }
   // Sultanstitel beim Kalifen erbitten
   if (!f.titles.includes('sultan') && titleClaimable(me, 'sultan').ok && rng().chance(0.15)) {
     if (s.player === 'abbasid') {
@@ -207,10 +225,30 @@ function aiDiplomacy(f) {
 const BUILD_VALUE = {
   market: 1.3, irrigation: 1.1, temple: 0.9, school: 0.8, walls: 0.7, barracks: 0.7, stables: 0.7, ordu: 1.0, caravanserai: 0.9, workshop: 0.9, palace: 0.6, port: 0.8,
 };
+function aiTownUpgrades(f, budget) {
+  if (budget < 120 || !rng().chance(0.2 + f.ai.build * 0.3)) return 0;
+  let best = null, bv = 0;
+  const cands = [];
+  for (const pid of factionProvinces(f.id)) townsOf(pid).forEach((t, i) => { if (t.owner === f.id) cands.push([pid, i]); });
+  cands.push(...foreignHeld(f.id));
+  for (const [pid, i] of cands) {
+    const c = canUpgrade(f.id, pid, i);
+    if (!c.ok || c.cost > budget) continue;
+    const t = townsOf(pid)[i];
+    const gain = townContribution(pid, i, provinceBaseFor(pid)).gold / t.lvl + (t.t === 'castle' && enemiesOf(f.id).length ? 2 : 0) + (t.t === 'monastery' || t.t === 'holy' ? 0.8 : 0);
+    const v = gain / c.cost * rng().range(0.8, 1.2);
+    if (v > bv) { bv = v; best = [pid, i]; }
+  }
+  if (!best) return 0;
+  const cost = canUpgrade(f.id, best[0], best[1]).cost;
+  return upgradeTown(f.id, best[0], best[1]) ? cost : 0;
+}
+
 function aiBuild(f) {
   const provs = factionProvinces(f.id);
   const reserve = 60 + provs.length * 15;
   let budget = f.gold - reserve;
+  budget -= aiTownUpgrades(f, budget);
   let built = 0;
   const maxBuild = f.gold > reserve * 4 ? 4 : 2;
   if (budget < 40) return;
@@ -375,6 +413,23 @@ async function aiMilitary(f) {
           v *= Math.min(1.5, pow / (gpow + 1));
           if (v > best) { best = v; target = pid; action = 'siege'; }
         }
+        // Feindliche Orte (Burgen, Enklaven) – vor allem im eigenen Land
+        for (const pid in r.dist) {
+          const p = prov(pid);
+          if (warTargets.has(p.owner)) continue;
+          const hts = hostileTowns(me, pid);
+          if (!hts.length) continue;
+          const d = r.dist[pid];
+          if (d > 7) continue;
+          const i = hts[0];
+          const tpow = townDefensePower(pid, i, a);
+          if (pow < tpow * 0.6) continue;
+          const t = townsOf(pid)[i];
+          let v = (14 + t.lvl * 6 + (myProvs.has(pid) ? 30 : 0) + (t.t === 'castle' ? 8 : 0)) / (d + 1.5);
+          if (t.siege && t.siege.fac === me) v *= 1.6;
+          if (claimed[pid]) v *= 0.4;
+          if (v > best) { best = v; target = pid; action = 'siege'; }
+        }
       }
     }
     if (hp < 0.45 || a.units.length < 3) {
@@ -429,7 +484,20 @@ async function aiMilitary(f) {
       if (pow > gpow * need && (siegeTurnsLeft > 1 || pow > gpow * 3)) {
         await assault(a);
       }
-    } else a.raid = false;
+    } else {
+      a.raid = false;
+      // Feindliche Orte in der Provinz stürmen, wenn die Übermacht groß genug ist
+      const hts = hostileTowns(me, a.prov);
+      if (hts.length && s.armies[a.id] && a.units.length) {
+        const i = hts.sort((x, y) => townWalls(a.prov, x) - townWalls(a.prov, y))[0];
+        const t = townsOf(a.prov)[i];
+        const tpow = townDefensePower(a.prov, i, a);
+        const left = t.siege ? t.siege.needed - t.siege.turns : 99;
+        a.siegeTown = i;
+        const hasSiege = a.units.some((u) => UNITS[u.t].cls === 'siege');
+        if (armyPower(a) > tpow * (hasSiege || townWalls(a.prov, i) < 2 ? 1.6 : 2.4) && left > 1) await assaultTown(a, i);
+      }
+    }
   }
 }
 

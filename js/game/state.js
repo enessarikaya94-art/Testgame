@@ -6,6 +6,7 @@ import { SCENARIOS } from '../data/scenarios.js';
 import { TRADE_ROUTES, GOVERNMENTS, religionAffinity, cultureAffinity } from '../data/world.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { RNG, pairKey, clamp } from '../util.js';
+import { transferTowns, dissolveTowns, contestedWith } from './towns.js';
 
 export const G = {
   s: null,      // serialisierbarer Zustand
@@ -144,6 +145,7 @@ export function opinionParts(a, b) {
   }
   if (fa.overlord === b || fb.overlord === a) add('op.vassal', 15);
   if (G.borders?.has(pairKey(a, b))) add('op.border', -6);
+  if (contestedWith(a, b)) add('op.contested', -12);
   const common = Object.values(G.s.factions).some((f) => f.alive && f.id !== a && f.id !== b && f.id !== 'rebels' && relPeek(a, f.id)?.war && relPeek(b, f.id)?.war);
   if (common) add('op.commonEnemy', 12);
   add('op.infamy', -Math.min(30, (fa.infamy + fb.infamy) * 0.15));
@@ -164,6 +166,7 @@ export function computeBorders() {
       const o2 = G.s.provinces[n].owner;
       if (o2 !== o) set.add(pairKey(o, o2));
     }
+    for (const t of G.s.provinces[pid].towns || []) if (t.owner !== o) set.add(pairKey(o, t.owner));
   }
   G.borders = set;
 }
@@ -186,7 +189,7 @@ export function log(k, p = {}, opts = {}) {
 export function createGame(scenarioId, playerFid, seed = Date.now() % 1e9, mapData) {
   const sc = SCENARIOS[scenarioId];
   const s = {
-    v: 2, scenario: scenarioId, year: sc.year, season: 0, turn: 1, player: playerFid,
+    v: 3, scenario: scenarioId, year: sc.year, season: 0, turn: 1, player: playerFid,
     rngState: seed, nextId: 1, factions: {}, provinces: {}, armies: {}, chars: {}, rel: {}, log: [],
     flags: {}, pending: [], gameOver: null, eventRate: 1, startYear: sc.year, observer: playerFid === null,
   };
@@ -288,9 +291,11 @@ export function buildingLevel(pid, bid) {
 
 export function isCoastal(pid) { return PROVINCE_BY_ID[pid].port; }
 
-export function setOwner(pid, fid) {
+// conquest: militärische Einnahme der Hauptstadt – befestigte Orte können sich halten
+export function setOwner(pid, fid, conquest = false) {
   const p = G.s.provinces[pid];
   const old = p.owner;
+  if (p.towns) transferTowns(pid, old, fid, conquest);
   p.lastOwner = old;
   p.owner = fid;
   p.queue = null;

@@ -11,6 +11,8 @@ import { TRAITS } from '../data/people.js';
 import { clamp } from '../util.js';
 import { specialtyEff } from '../data/specialties.js';
 import { discoverByTech, knows } from './discovery.js';
+import { townsOf, townContribution, townOrder, foreignHeld, setTownOwner, controlOf } from './towns.js';
+import { CONTROL, TOWN_TYPES, townName as townNameOf } from '../data/towns.js';
 import { focusEff, goodPrice, hasResource, IMPORT_SURCHARGE, loanPayments, processLoans, treatyFlows, clearResourceCache, clearMarketCache } from './market.js';
 
 export const UPKEEP_SCALE = 2;
@@ -84,6 +86,10 @@ export function orderBreakdown(pid) {
   const se = specialtyEff(pid), fe = focusEff(pid);
   add('ord.special', se.order || 0);
   add('ord.focus', fe.order || 0);
+  const to = townOrder(pid);
+  add('ord.towns', to.towns);
+  add('ord.control', to.control);
+  add('ord.divided', to.divided);
   if (p.plague) add('ord.plague', -10);
   if (p.famine > 0) add('ord.famine', -12);
   const own = armiesIn(pid).filter((a) => a.fac === f.id).length;
@@ -126,7 +132,8 @@ export function computeDistances() {
 }
 
 // ---------- Einkommen ----------
-export function provinceIncome(pid) {
+// baseOnly: Grundleistung der Provinz ohne ihre Orte (Grundlage für die Anteile der Orte)
+export function provinceIncome(pid, baseOnly = false) {
   const p = prov(pid), d = pdef(pid), f = fac(p.owner);
   const gov = GOVERNMENTS[f.gov];
   const m = getMods(f.id);
@@ -174,17 +181,52 @@ export function provinceIncome(pid) {
   const pastureGold = pasture * gov.pastureGold * 1.4;
   const horses = (pasture * gov.horsesMult * 0.6 + (se.horses || 0)) * (1 + m.horses) + (b.stables || 0) * 1.5 + (b.ordu || 0) * 1;
   const research = ([0, 0.75, 1.25, 2][b.school || 0] + (se.research || 0) * ordF) * (1 + m.research) * gov.researchMult;
-  return { tax, goods, route, pasture: pastureGold, horses, research };
+  const base = { tax, goods, route, pasture: pastureGold, horses, research };
+  const tw = p.towns || [];
+  if (baseOnly || !tw.length) return { ...base, towns: 0, prestige: 0, control: tw.length ? 'full' : 'none' };
+  // Orte der Provinz: eigene tragen bei, fremde spalten das Land
+  let foreign = 0;
+  const add = { tax: 0, goods: 0, route: 0, pasture: 0, flat: 0, horses: 0, research: 0, prestige: 0, gold: 0 };
+  tw.forEach((t, i) => {
+    if (t.owner !== p.owner) { foreign++; return; }
+    const c = townContribution(pid, i, base);
+    for (const k in add) add[k] += c[k] || 0;
+  });
+  const f1 = foreign ? Math.max(0.6, 1 - CONTROL.dividedLoss * foreign) : 1 + CONTROL.bonus;
+  return {
+    tax: tax * f1 + add.tax + add.flat, goods: goods * f1 + add.goods, route: route * f1 + add.route, pasture: pastureGold * f1 + add.pasture,
+    horses: horses + add.horses, research: research + add.research,
+    towns: add.gold, prestige: add.prestige, control: foreign ? 'divided' : 'full', foreign,
+  };
+}
+
+// Einnahmen aus Orten in fremden Provinzen (Enklaven)
+export function enclaveIncome(fid) {
+  const out = { gold: 0, horses: 0, research: 0, prestige: 0, n: 0 };
+  for (const [pid, i] of foreignHeld(fid)) {
+    const base = provinceIncome(pid, true);
+    const c = townContribution(pid, i, base);
+    out.gold += c.gold * 0.8 + base.tax * 0.04;
+    out.horses += c.horses; out.research += c.research; out.prestige += c.prestige;
+    out.n++;
+  }
+  return out;
 }
 
 export function factionIncome(fid) {
   const f = fac(fid);
   const m = getMods(fid);
   const r = { tax: 0, goods: 0, route: 0, pasture: 0, horses: 0, research: 1.5, tribute: 0, upkeep: 0, tributePaid: 0, admin: 0 };
+  r.towns = 0; r.townPrestige = 0;
   for (const pid of factionProvinces(fid)) {
     const pi = provinceIncome(pid);
     r.tax += pi.tax; r.goods += pi.goods; r.route += pi.route; r.pasture += pi.pasture; r.horses += pi.horses; r.research += pi.research;
+    r.towns += pi.towns || 0; r.townPrestige += pi.prestige || 0;
   }
+  // Enklaven in fremden Provinzen
+  const en = enclaveIncome(fid);
+  r.enclaves = en.gold; r.nEnclaves = en.n;
+  r.tax += en.gold; r.horses += en.horses; r.research += en.research; r.townPrestige += en.prestige;
   const mult = 1 + m.income;
   r.tax *= mult; r.goods *= mult; r.route *= mult; r.pasture *= mult;
   const gross = r.tax + r.goods + r.route + r.pasture;
@@ -228,6 +270,7 @@ export function processEconomy(fid) {
   const f = fac(fid);
   const inc = factionIncome(fid);
   f.last = inc;
+  f.prestige += inc.townPrestige || 0;
   f.gold += inc.net;
   f.horses = Math.min(f.horses + inc.horsesNet, 400 + factionProvinces(fid).length * 60);
   if (f.horses < 0) {
@@ -441,7 +484,8 @@ export function recruitOptions(fid, pid) {
 
 export function recruitLimit(pid) {
   const p = prov(pid);
-  return 1 + (p.buildings.barracks || 0) + (p.buildings.ordu || 0) + (p.pop >= 150 ? 1 : 0) + (focusEff(pid).recruit || 0);
+  const castles = (p.towns || []).filter((t) => t.owner === p.owner && TOWN_TYPES[t.t].eff.recruit).length;
+  return 1 + (p.buildings.barracks || 0) + (p.buildings.ordu || 0) + (p.pop >= 150 ? 1 : 0) + (focusEff(pid).recruit || 0) + castles;
 }
 
 export function recruit(fid, pid, uid) {
@@ -491,6 +535,11 @@ export function processRebellions() {
       if (p.rebelTurns >= 4 && !Object.values(s.armies).some((a) => a.prov === pid && a.fac !== 'rebels')) independence(pid);
       continue;
     }
+    // Aufständische Orte kehren bei guter Ordnung zurück
+    for (let i = 0; i < (p.towns || []).length; i++) {
+      const t = p.towns[i];
+      if (t.owner === 'rebels' && !t.siege && p.order > 55 && rng().chance(0.15)) setTownOwner(pid, i, p.owner, 'transfer');
+    }
     if (p.unrest >= 3 && rng().chance(0.35)) {
       p.unrest = 0;
       const n = clamp(Math.round(p.pop / 45) + 2, 2, 10);
@@ -500,6 +549,13 @@ export function processRebellions() {
       for (let i = 0; i < n; i++) units.push({ t: rng().pick(pool).replace('keshig', 'mongol_ha').replace('varangian', 'skutatoi'), hp: 0.8, xp: 0 });
       createArmy('rebels', pid, units);
       log('log.revolt', { prov: provName(pid), fac: f.n }, { f: p.owner, imp: p.owner === s.player });
+      // Ein Ort schließt sich den Aufständischen an
+      const own = (p.towns || []).map((t, i) => [t, i]).filter(([t]) => t.owner === p.owner);
+      if (own.length && rng().chance(0.5)) {
+        const [, i] = rng().pick(own);
+        setTownOwner(pid, i, 'rebels', 'revolt');
+        log('log.townRevolt', { town: townNameOf(pid, i), prov: provName(pid) }, { f: p.owner, imp: p.owner === s.player });
+      }
     }
   }
 }

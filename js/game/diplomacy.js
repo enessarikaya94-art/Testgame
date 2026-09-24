@@ -2,12 +2,14 @@
 
 import { G, fac, rel, relPeek, atWar, opinion, log, facName, factionProvinces, factionArmies, aliveFactions, neighbors, prov, provName, setOwner, rng, chr } from './state.js';
 import { armyPower } from './military.js';
+import { provinceIncome } from './economy.js';
 import { RELIGIONS } from '../data/world.js';
 import { TITLES } from '../data/factions.js';
 import { clamp } from '../util.js';
 import { generals, loyalty, createChar, civilWar } from './characters.js';
 import { setPayment, resourceAccess } from './market.js';
 import { contactByWar } from './discovery.js';
+import { foreignHeld, setTownOwner, townValue, townsOf, townName } from './towns.js';
 
 export const TRUCE_TURNS = 12;
 
@@ -26,10 +28,16 @@ export function borders(a, b) {
 
 export function neighborsOf(fid) {
   const set = new Set();
-  for (const p of factionProvinces(fid)) for (const n of neighbors(p)) {
-    const o = prov(n).owner;
-    if (o && o !== fid && o !== 'rebels') set.add(o);
+  for (const p of factionProvinces(fid)) {
+    for (const n of neighbors(p)) {
+      const o = prov(n).owner;
+      if (o && o !== fid && o !== 'rebels') set.add(o);
+    }
+    // fremde Orte in eigenen Provinzen
+    for (const t of prov(p).towns || []) if (t.owner !== fid && t.owner !== 'rebels') set.add(t.owner);
   }
+  // eigene Orte in fremden Provinzen
+  for (const [pid] of foreignHeld(fid)) { const o = prov(pid).owner; if (o !== 'rebels') set.add(o); }
   return [...set];
 }
 
@@ -101,6 +109,7 @@ export function acceptCallToArms(joiner, friend, enemy, accept) {
 }
 
 export function makePeace(a, b, terms = {}) {
+  const wsA = warScore(a, b);
   const r = rel(a, b);
   r.war = false; r.truce = G.s.turn + TRUCE_TURNS; r.score = {};
   const fa = fac(a), fb = fac(b);
@@ -116,6 +125,15 @@ export function makePeace(a, b, terms = {}) {
     setOwner(pid, to);
     for (const ar of Object.values(G.s.armies)) if (ar.prov === pid && ar.fac !== to) moveHome(ar);
   }
+  // Enklaven: Der Sieger behält seine Orte im Land des Verlierers und erhält dessen Orte im eigenen Land zurück
+  if (Math.abs(wsA) > 15) {
+    const win = wsA > 0 ? a : b, lose = win === a ? b : a;
+    for (const [pid, i] of [...foreignHeld(lose)]) if (prov(pid).owner === win) setTownOwner(pid, i, win);
+  }
+  for (const [pid, i] of terms.towns || []) {
+    const t = townsOf(pid)[i];
+    if (t) setTownOwner(pid, i, t.owner === a ? b : a);
+  }
   if (terms.vassal) fac(terms.vassal).overlord = terms.vassal === a ? b : a;
   if (terms.pay) setPayment(terms.pay.from, terms.pay.from === a ? b : a, terms.pay.amount, terms.pay.turns);
   for (const f of [fa, fb]) f.warWeariness = Math.max(0, f.warWeariness - 10);
@@ -126,6 +144,7 @@ export function makePeace(a, b, terms = {}) {
   for (const pid in G.s.provinces) {
     const p = G.s.provinces[pid];
     if (p.siege && ((p.siege.fac === a && p.owner === b) || (p.siege.fac === b && p.owner === a))) p.siege = null;
+    for (const t of p.towns || []) if (t.siege && ((t.siege.fac === a && t.owner === b) || (t.siege.fac === b && t.owner === a))) t.siege = null;
   }
   log('log.peace', { a: fa.n, b: fb.n }, { f: a, imp: a === G.s.player || b === G.s.player });
 }
@@ -136,6 +155,20 @@ function moveHome(ar) {
   const cap = fac(ar.fac).capital;
   ar.prov = own.includes(cap) ? cap : own[0];
   ar.path = []; ar.siegeOf = null; ar.raid = false;
+}
+
+// Grundleistung einer Provinz (für den Wert ihrer Orte)
+export function provinceBaseFor(pid) { return provinceIncome(pid, true); }
+
+// Ort verkaufen/kaufen/verschenken
+export function tradeTown(pid, i, from, to, price = 0) {
+  const t = townsOf(pid)[i];
+  if (!t || t.owner !== from) return false;
+  if (price) { fac(to).gold -= price; fac(from).gold += price; }
+  setTownOwner(pid, i, to);
+  if (!price) rel(from, to).mod += 12 + t.lvl * 4;
+  log(price ? 'log.townSold' : 'log.townCeded', { town: townName(pid, i), prov: provName(pid), a: facName(from), b: facName(to), n: price }, { f: from, imp: from === G.s.player || to === G.s.player });
+  return true;
 }
 
 // Bewertung eines Friedensangebots durch die KI (aus Sicht von "to")
@@ -158,7 +191,7 @@ export function peaceAcceptance(from, to, terms) {
 }
 
 // ---------- Handel, Bündnis, Vasallen ----------
-export function proposalAcceptance(type, from, to) {
+export function proposalAcceptance(type, from, to, extra = {}) {
   const op = opinion(from, to);
   const pf = militaryPower(from), pt = militaryPower(to);
   const ratio = pf / (pt + 1);
@@ -188,6 +221,22 @@ export function proposalAcceptance(type, from, to) {
       return (ratio - 3) * 20 + op * 0.5 - n * 3 - (fac(to).prestige / 10) + (neighborsOf(to).includes(from) ? 10 : -30);
     }
     case 'marriage': return op + 10 - (atWar(from, to) ? 999 : 0);
+    case 'buyTown': {
+      // "from" möchte einen Ort von "to" kaufen (Preis im Verhältnis zum Wert)
+      if (atWar(from, to)) return -999;
+      const { pid, i, price } = extra;
+      const value = townValue(pid, i, provinceBaseFor(pid));
+      const own = prov(pid).owner === to ? -30 : 10; // Orte im eigenen Land gibt man ungern her
+      return (price / value - 1) * 60 + op * 0.4 + own + (ratio > 1.5 ? 10 : 0) - (townsOf(pid)[i].t === 'castle' ? 15 : 0);
+    }
+    case 'sellTown': {
+      // "from" bietet "to" einen Ort zum Kauf an
+      if (atWar(from, to)) return -999;
+      const { pid, i, price } = extra;
+      if (fac(to).gold < price) return -999;
+      const value = townValue(pid, i, provinceBaseFor(pid));
+      return (value / price - 1) * 60 + op * 0.2 + (prov(pid).owner === to ? 25 : -20);
+    }
     case 'tribute': {
       // "to" soll einmalig Tribut an "from" zahlen
       if (atWar(from, to) || fac(to).overlord === from) return -999;

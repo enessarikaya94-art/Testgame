@@ -10,6 +10,7 @@ import { clamp } from '../util.js';
 import { specialtyEff } from '../data/specialties.js';
 import { focusEff } from './market.js';
 import { canSee } from './discovery.js';
+import { townsOf, townWalls, hostileTowns, townDefenders, townSiegeNeeded, captureTown, dissolveTowns, controlOf, townName, townGarrisonUnits } from './towns.js';
 
 export const MAX_UNITS = 20;
 
@@ -31,6 +32,15 @@ export function armyPower(a) {
 
 export function garrisonPower(pid) {
   return garrisonUnits(pid).reduce((s, u) => s + unitPower(u), 0) * (1 + effectiveWalls(pid) * 0.35);
+}
+
+// Stärke der Verteidiger eines Ortes (Besatzung hinter Mauern und Heere seines Herrn)
+export function townDefensePower(pid, i, attacker = null) {
+  const w = townWalls(pid, i);
+  const p = townGarrisonUnits(pid, i).reduce((s, u) => s + unitPower(u), 0) * (1 + w * 0.35) + townDefenders(pid, i).reduce((s, a) => s + armyPower(a), 0);
+  // ohne Belagerungsgerät sind Mauern ab zwei Stufen schwer zu nehmen
+  const noEngines = attacker && w >= 2 && !attacker.units.some((u) => UNITS[u.t].cls === 'siege');
+  return noEngines ? p / 0.75 : p;
 }
 
 export function effectiveWalls(pid) {
@@ -181,6 +191,7 @@ export async function advanceArmy(a) {
     a.mp -= cost;
     const from = a.prov;
     a.prov = next;
+    a.siegeTown = null;
     moved = true;
     a.moved = true;
     if (!a.trail || a.trail.turn !== G.s.turn) a.trail = { turn: G.s.turn, provs: [from] };
@@ -231,28 +242,55 @@ export function siegeNeeded(pid) {
   return 1 + Math.round(effectiveWalls(pid) * 1.5) + (prov(pid).buildings.barracks ? 1 : 0);
 }
 
+// Belagerungsziel eines Heeres in seiner Provinz: 'capital' oder Index eines Ortes
+export function siegeTargetOf(a) {
+  const p = prov(a.prov);
+  const hostileCapital = p.owner !== a.fac && atWar(a.fac, p.owner);
+  const towns = hostileTowns(a.fac, a.prov);
+  if (a.siegeTown !== undefined && a.siegeTown !== null && towns.includes(a.siegeTown)) return a.siegeTown;
+  if (hostileCapital) return 'capital';
+  if (!towns.length) return null;
+  // schwächster feindlicher Ort zuerst
+  return towns.sort((x, y) => townWalls(a.prov, x) - townWalls(a.prov, y))[0];
+}
+
 export function beginSieges() {
   const s = G.s;
   for (const a of Object.values(s.armies)) {
-    if (!a.units.length) continue;
+    if (!a.units.length || a.raid) continue;
     const p = prov(a.prov);
-    if (p.owner === a.fac || !atWar(a.fac, p.owner)) continue;
-    if (a.raid) continue;
-    const defenders = armiesIn(a.prov).filter((x) => x.fac === p.owner || (x.fac !== a.fac && !atWar(x.fac, p.owner) && atWar(x.fac, a.fac)));
-    if (defenders.some((x) => x.units.length)) continue;
-    if (!p.siege || !atWar(p.siege.fac, p.owner)) {
-      p.siege = { fac: a.fac, turns: 0, needed: siegeNeeded(a.prov) };
+    // Offene Orte ohne Mauern und Verteidiger fallen jedem feindlichen Heer von selbst zu
+    for (const i of hostileTowns(a.fac, a.prov)) {
+      const t = townsOf(a.prov)[i];
+      if (townWalls(a.prov, i) === 0 && !t.siege && !townDefenders(a.prov, i).length) t.siege = { fac: a.fac, turns: 0, needed: 1 };
+    }
+    const target = siegeTargetOf(a);
+    if (target === null) continue;
+    if (target === 'capital') {
+      const defenders = armiesIn(a.prov).filter((x) => x.fac === p.owner || (x.fac !== a.fac && !atWar(x.fac, p.owner) && atWar(x.fac, a.fac)));
+      if (defenders.some((x) => x.units.length)) continue;
+      if (!p.siege || !atWar(p.siege.fac, p.owner)) {
+        p.siege = { fac: a.fac, turns: 0, needed: siegeNeeded(a.prov) };
+        a.siegeOf = a.prov;
+        if (p.owner === s.player) log('log.siegeStart', { prov: provName(a.prov), fac: facName(a.fac) }, { f: p.owner, imp: true });
+      }
+      continue;
+    }
+    const t = townsOf(a.prov)[target];
+    if (townDefenders(a.prov, target).length) continue;
+    if (!t.siege || !atWar(t.siege.fac, t.owner)) {
+      t.siege = { fac: a.fac, turns: 0, needed: townSiegeNeeded(a.prov, target) };
       a.siegeOf = a.prov;
-      if (p.owner === s.player) log('log.siegeStart', { prov: provName(a.prov), fac: facName(a.fac) }, { f: p.owner, imp: true });
+      if (t.owner === s.player) log('log.townSiege', { town: townName(a.prov, target), prov: provName(a.prov), fac: facName(a.fac) }, { f: t.owner, imp: true });
     }
   }
 }
 
 export function checkSiegeLifted(pid) {
   const p = prov(pid);
-  if (!p.siege) return;
-  const still = armiesIn(pid).some((x) => x.fac === p.siege.fac && x.units.length);
-  if (!still) p.siege = null;
+  const present = (fid) => armiesIn(pid).some((x) => x.fac === fid && x.units.length);
+  if (p.siege && !present(p.siege.fac)) p.siege = null;
+  for (const t of townsOf(pid)) if (t.siege && !present(t.siege.fac)) t.siege = null;
 }
 
 // Rundenende: Fortschritt aller Belagerungen
@@ -260,6 +298,17 @@ export async function progressSieges() {
   const s = G.s;
   for (const pid in s.provinces) {
     const p = s.provinces[pid];
+    // Orte
+    for (let i = 0; i < (p.towns || []).length; i++) {
+      const t = p.towns[i];
+      if (!t.siege) continue;
+      checkSiegeLifted(pid);
+      if (!t.siege) continue;
+      if (!atWar(t.siege.fac, t.owner)) { t.siege = null; continue; }
+      t.siege.turns++;
+      t.gar = Math.max(0.1, t.gar - 0.15);
+      if (t.siege.turns >= t.siege.needed) captureTown(pid, i, t.siege.fac, 'siege');
+    }
     if (!p.siege) continue;
     checkSiegeLifted(pid);
     if (!p.siege) continue;
@@ -271,6 +320,18 @@ export async function progressSieges() {
       await captureProvince(pid, p.siege.fac, 'starve');
     }
   }
+}
+
+// Sturm auf einen Ort innerhalb der Provinz
+export async function assaultTown(a, i) {
+  const pid = a.prov;
+  const t = townsOf(pid)[i];
+  if (!t || t.owner === a.fac || !atWar(a.fac, t.owner)) return null;
+  const defenders = townDefenders(pid, i);
+  const res = await resolveBattle({ att: [a.id], def: defenders.map((d) => d.id), prov: pid, assault: true, town: i });
+  if (res.winner === 'att' && G.s.armies[a.id]) captureTown(pid, i, a.fac, 'assault');
+  a.mp = 0;
+  return res;
 }
 
 export async function assault(a) {
@@ -323,7 +384,7 @@ export async function captureProvince(pid, fid, how) {
     f.infamy += holy ? 2 : 5;
     f.prestige += 3;
   }
-  setOwner(pid, fid);
+  setOwner(pid, fid, true);
   if (choice === 'sack') p.order = Math.max(0, p.order - 20);
   if (choice === 'raze') p.order = Math.max(0, p.order - 40);
   // Heere des alten Besitzers in der Provinz ziehen ab
@@ -352,6 +413,7 @@ export function checkFactionDeath(fid, killer) {
   if (men > 1500 && f.spawned && !f.everOwned) return;
   f.alive = false;
   bumpAlive();
+  dissolveTowns(fid);
   for (const a of armies) delete s.armies[a.id];
   for (const c of Object.values(s.chars)) if (c.fac === fid) c.alive = false;
   for (const v of Object.values(s.factions)) if (v.overlord === fid) v.overlord = null;
@@ -412,7 +474,7 @@ export function processSupply() {
     if (!a.units.length) { if (!a.gen) delete s.armies[a.id]; continue; }
     const p = prov(a.prov), d = pdef(a.prov);
     const own = p.owner === a.fac;
-    const friendly = own || (hasAccess(a.fac, p.owner) && !atWar(a.fac, p.owner));
+    const friendly = own || (hasAccess(a.fac, p.owner) && !atWar(a.fac, p.owner)) || (p.towns || []).some((t) => t.owner === a.fac);
     const nomad = isNomadArmy(a);
     let attr = 0;
     if (d.terrain === 'desert' && !nomad && !['camel'].includes(a.units[0] && UNITS[a.units[0].t].cls)) attr += 0.04;
