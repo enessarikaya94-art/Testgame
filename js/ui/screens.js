@@ -1,0 +1,581 @@
+// Dialoge und Bildschirme: Schlacht, Ereignisse, Fraktion, Diplomatie, Forschung, Dynastie, Chronik, Rangliste, Menü.
+
+import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, atWar, relPeek, rel, opinion, facName, provName, aliveFactions, neighbors, END_YEAR, log } from '../game/state.js';
+import { factionIncome, getMods, clearModCache, techAvailable } from '../game/economy.js';
+import { TACTICS } from '../game/battle.js';
+import { goalStatus, ranking, score, refreshCaches } from '../game/turn.js';
+import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, breakAlliance, setNap, makeVassal, releaseVassal, giftGold, marriage, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, acceptCallToArms, vassalsOf } from '../game/diplomacy.js';
+import { stat, age, loyalty, dynastyMembers, generals, hireGeneral, hireGeneralCost, appointVizier, updateHeir } from '../game/characters.js';
+import { EVENTS, GLOBAL_EVENTS, applyEventChoice, changeReligion } from '../game/events.js';
+import { TECHS, TECH_BRANCHES, techCost } from '../data/techs.js';
+import { TERRAINS, RELIGIONS, CULTURES, GOVERNMENTS, SUCCESSION_LAWS, SEASONS } from '../data/world.js';
+import { FACTIONS, TITLES } from '../data/factions.js';
+import { UNITS, UNIT_CLASSES } from '../data/units.js';
+import { TRAITS } from '../data/people.js';
+import { t, L, lang, setLang } from '../i18n.js';
+import { $, openModal, toast, bar, swatch } from './dom.js';
+import { esc, fmt, signed, clamp } from '../util.js';
+import { refreshAll, charBadge, CLASS_ICON, UIState, selectProvince } from './game-ui.js';
+import { formatLog, dateText } from './format.js';
+import { SLOTS, saveSlot, slotMeta, exportSave, importSave, loadSlotData } from './saves.js';
+
+// ---------- Allgemein ----------
+export function confirmDialog(text, yes, no) {
+  return openModal(`<p class="big">${esc(text)}</p><div class="actions center"><button class="primary" data-act="yes">${esc(yes)}</button><button data-act="no">${esc(no)}</button></div>`, {
+    cancelValue: false,
+    handlers: (close) => ({ yes: () => close(true), no: () => close(false) }),
+  });
+}
+
+export function toggleLang() {
+  setLang(lang() === 'de' ? 'tr' : 'de');
+  refreshAll();
+}
+
+function compBars(c) {
+  return `<div class="comp">
+    <div>${esc(t('bt.cav'))} ${bar(c.cav, '#8b5a2b', 'mini')}</div>
+    <div>${esc(t('bt.ranged'))} ${bar(c.ranged, '#2e6b8f', 'mini')}</div>
+    <div>${esc(t('bt.inf'))} ${bar(c.inf, '#5d6d7e', 'mini')}</div>
+  </div>`;
+}
+
+function unitSummary(units) {
+  const counts = {};
+  for (const u of units) { const k = u.t; counts[k] = (counts[k] || 0) + 1; }
+  return Object.entries(counts).map(([k, n]) => `<span class="uchip" title="${esc(L(UNITS[k].n))}">${CLASS_ICON[UNITS[k].cls]}×${n}</span>`).join('');
+}
+
+// ---------- Schlacht ----------
+export function tacticDialog(info, side) {
+  const me = info[side], foe = info[side === 'att' ? 'def' : 'att'];
+  const mf = fac(me.fac), ff = fac(foe.fac);
+  const gMe = chr(me.gen), gFoe = chr(foe.gen);
+  const ratio = me.men / Math.max(1, foe.men);
+  const html = `<h2>⚔ ${esc(info.assault ? t('bt.assaultTitle', { city: L(pdef(info.prov).city) }) : t('bt.title', { prov: L(pdef(info.prov).n) }))}</h2>
+  <div class="muted center">${esc(t('bt.terrain'))}: <b>${esc(L(TERRAINS[info.terrain].n))}</b>${info.assault ? ` · ${esc(t('prov.walls'))}: ${'▮'.repeat(info.walls)}` : ''} · ${esc(L(SEASONS[G.s.season]))}</div>
+  <div class="versus">
+    <div class="side">${swatch(mf.color)}<b>${esc(L(mf.n))}</b><div>${gMe ? esc(L(gMe.n)) + ' ⚔' + stat(gMe, 'mar') : esc(t('army.noGeneral'))}</div><div class="men">${fmt(me.men)}</div>${compBars(me.comp)}<div>${unitSummary(me.units)}</div></div>
+    <div class="vs">VS<div class="small muted">${ratio > 1.3 ? esc(t('bt.outnumber')) : ratio < 0.77 ? esc(t('bt.outnumbered')) : esc(t('bt.evenNumbers'))}</div></div>
+    <div class="side">${swatch(ff.color)}<b>${esc(L(ff.n))}</b><div>${gFoe ? esc(L(gFoe.n)) + ' ⚔' + stat(gFoe, 'mar') : esc(t('army.noGeneral'))}</div><div class="men">${fmt(foe.men)}</div>${compBars(foe.comp)}<div>${unitSummary(foe.units)}</div></div>
+  </div>
+  <h3>${esc(t('bt.choose'))}</h3>
+  <div class="tactics">${me.options.map((k) => `<button class="tactic" data-act="pick" data-t="${k}"><span class="ticon">${TACTICS[k].icon}</span><b>${esc(L(TACTICS[k].n))}</b><small>${esc(L(TACTICS[k].desc))}</small></button>`).join('')}
+    <button class="tactic auto" data-act="pick" data-t=""><span class="ticon">⚙</span><b>${esc(t('bt.auto'))}</b><small>${esc(t('bt.autoDesc'))}</small></button></div>`;
+  return openModal(html, { wide: true, closable: false, handlers: (close) => ({ pick: (el) => close(el.dataset.t || null) }) });
+}
+
+export function battleReportDialog(rep) {
+  const player = G.s.player;
+  const mySide = rep.att.fac === player ? 'att' : 'def';
+  const won = rep.winner === mySide;
+  const af = fac(rep.att.fac), df = fac(rep.def.fac);
+  const html = `<h2 class="${won ? 'pos' : 'neg'}">${won ? '🏆 ' + esc(t('bt.victory')) : '☠ ' + esc(t('bt.defeat'))}</h2>
+  <div class="muted center">${esc(L(pdef(rep.prov).n))}${rep.assault ? ' · ' + esc(t('log.assault')) : ''}</div>
+  <div class="versus">
+    <div class="side">${swatch(af.color)}<b>${esc(L(af.n))}</b><div>${esc(L(TACTICS[rep.tA]?.n || ''))}</div><div class="men">${fmt(rep.att.men)}</div><div class="neg">−${fmt(rep.attLost || 0)}</div></div>
+    <div class="vs">⚔</div>
+    <div class="side">${swatch(df.color)}<b>${esc(L(df.n))}</b><div>${esc(L(TACTICS[rep.tD]?.n || ''))}</div><div class="men">${fmt(rep.def.men)}</div><div class="neg">−${fmt(rep.defLost || 0)}</div></div>
+  </div>
+  <div class="chronicle-text">${rep.lines.map((l) => `<p>${esc(t(l.k, l.p))}</p>`).join('')}</div>
+  <div class="actions center"><button class="primary" data-act="ok">${esc(t('ui.ok'))}</button></div>`;
+  return openModal(html, { wide: true, handlers: (close) => ({ ok: () => close(true) }) });
+}
+
+export function captureDialog(ctx) {
+  const pid = ctx.prov;
+  const html = `<h2>🏰 ${esc(t('cap.title', { city: L(pdef(pid).city) }))}</h2>
+  <p>${esc(t('cap.text', { prov: L(pdef(pid).n) }))}</p>
+  <div class="choices">
+    <button data-act="c" data-v="occupy"><b>${esc(t('cap.occupy'))}</b><small>${esc(t('cap.occupyDesc'))}</small></button>
+    <button data-act="c" data-v="sack"><b>${esc(t('cap.sack'))}</b><small>${esc(t('cap.sackDesc'))}</small></button>
+    <button data-act="c" data-v="raze"><b>${esc(t('cap.raze'))}</b><small>${esc(t('cap.razeDesc'))}</small></button>
+  </div>`;
+  return openModal(html, { closable: false, handlers: (close) => ({ c: (el) => close(el.dataset.v) }) });
+}
+
+// ---------- Rundenbericht & Ereignisse ----------
+export function turnReport(entries) {
+  const s = G.s;
+  const html = `<h2>📜 ${esc(t('rep.title', { date: `${L(SEASONS[s.season])} ${s.year}` }))}</h2>
+  <div class="report">${entries.map((e) => `<p class="${e.imp ? 'imp' : ''}">${esc(formatLog(e))}</p>`).join('')}</div>
+  <div class="actions center"><button class="primary" data-act="ok">${esc(t('ui.ok'))}</button></div>`;
+  return openModal(html, { handlers: (close) => ({ ok: () => close(true) }) });
+}
+
+export async function pendingDialog(item) {
+  const s = G.s;
+  if (item.type === 'event' || item.type === 'global') {
+    const ev = item.type === 'event' ? EVENTS[item.id] : GLOBAL_EVENTS[item.id];
+    if (!ev) return;
+    const params = ev.params ? ev.params(item.ctx || {}) : {};
+    const fid = item.fid || s.player;
+    const text = fill(L(ev.text), params);
+    const html = `<div class="event"><h2>${esc(L(ev.title))}</h2><p class="evtext">${esc(text)}</p>
+      <div class="choices">${ev.options.map((o, i) => {
+        const ok = !o.ok || o.ok(fid, item.ctx || {});
+        return `<button data-act="o" data-i="${i}" ${ok ? '' : 'disabled'}><b>${esc(L(o.t))}</b>${o.desc ? `<small>${esc(L(o.desc))}</small>` : ''}</button>`;
+      }).join('')}</div></div>`;
+    const idx = await openModal(html, { closable: false, handlers: (close) => ({ o: (el) => close(+el.dataset.i) }) });
+    if (item.type === 'event') applyEventChoice({ ...item, fid }, idx);
+    else ev.options[idx].fx(fid, item.ctx || {});
+    clearModCache();
+    return;
+  }
+  if (item.type === 'callToArms') {
+    const ok = await confirmDialog(t('cta.text', { ally: L(facName(item.from)), enemy: L(facName(item.enemy)) }), t('cta.join'), t('cta.refuse'));
+    acceptCallToArms(s.player, item.from, item.enemy, ok);
+    return;
+  }
+  if (item.type === 'proposal') {
+    const from = item.from;
+    if (!fac(from)?.alive) return;
+    let text = '';
+    if (item.kind === 'peace') {
+      if (!atWar(from, s.player)) return;
+      text = t('prop.peace', { fac: L(facName(from)) });
+      if (item.terms?.gold) text += ' ' + (item.terms.goldFrom === from ? t('prop.theyPay', { n: item.terms.gold }) : t('prop.wePay', { n: item.terms.gold }));
+    } else if (item.kind === 'trade') text = t('prop.trade', { fac: L(facName(from)) });
+    else if (item.kind === 'alliance') text = t('prop.alliance', { fac: L(facName(from)) });
+    else if (item.kind === 'sultan') text = t('prop.sultan', { fac: L(facName(from)) });
+    const ok = await confirmDialog(text, t('prop.accept'), t('prop.decline'));
+    if (item.kind === 'peace') { if (ok) makePeace(from, s.player, item.terms || {}); }
+    else if (item.kind === 'trade') { if (ok) setTrade(from, s.player, true); else rel(from, s.player).mod -= 5; }
+    else if (item.kind === 'alliance') { if (ok) setAlliance(from, s.player); else rel(from, s.player).mod -= 5; }
+    else if (item.kind === 'sultan') {
+      if (ok) { fac(from).titles.push('sultan'); rel(from, s.player).mod += 30; fac(s.player).gold += 150; fac(s.player).prestige += 10; log('log.title', { fac: fac(from).n, title: TITLES.sultan.n }, { f: from, imp: true }); }
+      else rel(from, s.player).mod -= 30;
+    }
+    refreshCaches();
+  }
+}
+
+function fill(str, params) {
+  return str.replace(/\{(\w+)\}/g, (_, k) => (params[k] !== undefined ? L(params[k]) : ''));
+}
+
+export async function gameOverDialog() {
+  const s = G.s;
+  const go = s.gameOver;
+  let html = '';
+  if (go.type === 'victory') {
+    html = `<h2 class="pos">🏆 ${esc(t('go.victory'))}</h2><p>${esc(t('go.victoryText'))}</p><div class="actions center"><button class="primary" data-act="cont">${esc(t('go.continue'))}</button><button data-act="menu">${esc(t('go.menu'))}</button></div>`;
+  } else if (go.type === 'defeat') {
+    html = `<h2 class="neg">☠ ${esc(t('go.defeat'))}</h2><p>${esc(t('go.defeatText'))}</p><div class="actions center"><button class="primary" data-act="menu">${esc(t('go.menu'))}</button></div>`;
+  } else {
+    html = `<h2>📜 ${esc(t('go.end', { year: END_YEAR }))}</h2><p>${esc(t('go.endText', { rank: go.rank }))}</p>${rankingTable()}<div class="actions center"><button data-act="cont">${esc(t('go.continue'))}</button><button class="primary" data-act="menu">${esc(t('go.menu'))}</button></div>`;
+  }
+  const r = await openModal(html, { closable: false, wide: go.type === 'end', handlers: (close) => ({ cont: () => close('cont'), menu: () => close('menu') }) });
+  if (r === 'cont') s.gameOver = null;
+  else if (UIState.onExit) UIState.onExit();
+}
+
+// ---------- Fraktion ----------
+export function factionScreen() {
+  const render = () => {
+    const s = G.s, f = fac(s.player);
+    const inc = factionIncome(f.id);
+    const ruler = chr(f.ruler), heir = chr(f.heir), viz = chr(f.vizier);
+    const goals = goalStatus(f.id);
+    const gov = GOVERNMENTS[f.gov];
+    const decisions = [];
+    // Regierungsform
+    if (f.gov === 'nomad') decisions.push(dec('gov:sultanate', t('dec.toSultanate'), t('dec.toSultanateDesc'), f.techs.includes('diwan') && f.prestige >= 40, !f.techs.includes('diwan') ? t('dec.needTech', { tech: L(TECHS.diwan.n) }) : t('dec.needPrestige', { n: 40 })));
+    if (f.gov === 'sultanate') {
+      decisions.push(dec('gov:sedentary', t('dec.toSedentary'), t('dec.toSedentaryDesc'), f.techs.includes('cadastre') && f.prestige >= 40, !f.techs.includes('cadastre') ? t('dec.needTech', { tech: L(TECHS.cadastre.n) }) : t('dec.needPrestige', { n: 40 })));
+      if (CULTURES[f.culture].group === 'steppe') decisions.push(dec('gov:nomad', t('dec.toNomad'), t('dec.toNomadDesc'), f.prestige >= 40, t('dec.needPrestige', { n: 40 })));
+    }
+    // Titel
+    for (const tid of Object.keys(TITLES)) {
+      if (tid === 'caliph' || f.titles.includes(tid)) continue;
+      const c = titleClaimable(f.id, tid);
+      if (c.reason === 't.turkic' || c.reason === 't.persian' || c.reason === 't.orthodox' || c.reason === 't.sunni' || c.reason === 't.isCaliph') continue;
+      let why = '';
+      if (!c.ok) why = c.reason === 't.needs' ? t('t.needs', { list: c.missing.map((p) => L(provName(p))).join(', ') }) : t(c.reason, { n: c.need });
+      decisions.push(dec('title:' + tid, t('dec.title', { title: L(TITLES[tid].n) }), L(TITLES[tid].desc), c.ok, why));
+    }
+    // Heiliger Krieg
+    const grp = RELIGIONS[f.religion].group;
+    if (['islam', 'christian'].includes(grp)) {
+      const name = grp === 'islam' ? t('dec.ghaza') : t('dec.crusade');
+      decisions.push(dec('holy', name, t('dec.holyDesc'), f.holyWar <= 0 && f.prestige >= 40, f.holyWar > 0 ? t('dec.holyActive', { n: f.holyWar }) : t('dec.needPrestige', { n: 40 })));
+    }
+    // Religionswechsel
+    const cap = f.capital && prov(f.capital);
+    if (cap) {
+      for (const [r, share] of Object.entries(cap.rel)) {
+        if (r === f.religion || share < 0.25) continue;
+        decisions.push(dec('rel:' + r, t('dec.convert', { rel: L(RELIGIONS[r].n) }), t('dec.convertDesc'), f.prestige >= 60, t('dec.needPrestige', { n: 60 })));
+      }
+    }
+    // Nachfolge
+    for (const law of Object.keys(SUCCESSION_LAWS)) {
+      if (law === f.succession) continue;
+      const need = law === 'elective' ? 'kurultai' : law === 'primogeniture' ? 'atabeg' : null;
+      const okTech = !need || f.techs.includes(need) || (law === 'primogeniture' && f.gov === 'sedentary');
+      decisions.push(dec('law:' + law, t('dec.law', { law: L(SUCCESSION_LAWS[law].n) }), L(SUCCESSION_LAWS[law].desc), okTech && f.prestige >= 50, !okTech ? t('dec.needTech', { tech: L(TECHS[need].n) }) : t('dec.needPrestige', { n: 50 })));
+    }
+    decisions.push(dec('vizier', t('dec.vizier'), t('dec.vizierDesc'), f.gold >= 120 && f.gov !== 'nomad', f.gov === 'nomad' ? t('dec.noNomad') : t('dec.needGold', { n: 120 })));
+
+    return `<h2>${swatch(f.color)} ${esc(L(f.n))}</h2>
+    <div class="cols">
+      <div>
+        <h3>${esc(t('fac.overview'))}</h3>
+        <table class="kv">
+          <tr><th>${esc(t('fac.ruler'))}</th><td>${ruler ? charBadge(ruler) : '—'}</td></tr>
+          <tr><th>${esc(t('fac.heir'))}</th><td>${heir ? charBadge(heir) : '—'}</td></tr>
+          ${viz ? `<tr><th>${esc(t('fac.vizier'))}</th><td>${charBadge(viz)}</td></tr>` : ''}
+          <tr><th>${esc(t('fac.gov'))}</th><td title="${esc(L(gov.desc))}"><b>${esc(L(gov.n))}</b><br><small class="muted">${esc(L(gov.desc))}</small></td></tr>
+          <tr><th>${esc(t('fac.succession'))}</th><td title="${esc(L(SUCCESSION_LAWS[f.succession].desc))}">${esc(L(SUCCESSION_LAWS[f.succession].n))}</td></tr>
+          <tr><th>${esc(t('fac.religion'))}</th><td>${swatch(RELIGIONS[f.religion].color)}${esc(L(RELIGIONS[f.religion].n))}</td></tr>
+          <tr><th>${esc(t('fac.culture'))}</th><td>${esc(L(CULTURES[f.culture].n))}</td></tr>
+          <tr><th>${esc(t('fac.titles'))}</th><td>${f.titles.map((x) => `<span class="title-chip" title="${esc(L(TITLES[x].desc))}">${esc(L(TITLES[x].n))}</span>`).join(' ') || '—'}</td></tr>
+          <tr><th>${esc(t('fac.legitimacy'))}</th><td>${bar(f.legitimacy / 100, '#c9a227')} ${Math.round(f.legitimacy)}</td></tr>
+          <tr><th>${esc(t('fac.infamy'))}</th><td>${bar(Math.min(1, f.infamy / 100), '#8b1a1a')} ${Math.round(f.infamy)}</td></tr>
+          <tr><th>${esc(t('fac.weariness'))}</th><td>${bar(Math.min(1, f.warWeariness / 60), '#5d6d7e')} ${Math.round(f.warWeariness)}</td></tr>
+          ${f.overlord ? `<tr><th>${esc(t('fac.overlord'))}</th><td>${esc(L(facName(f.overlord)))}</td></tr>` : ''}
+        </table>
+        <h3>${esc(t('fac.income'))}</h3>
+        <table class="kv small">
+          <tr><th>${esc(t('inc.tax'))}</th><td>${fmt(inc.tax)}</td></tr>
+          <tr><th>${esc(t('inc.goods'))}</th><td>${fmt(inc.goods)}</td></tr>
+          <tr><th>${esc(t('inc.route'))}</th><td>${fmt(inc.route)}</td></tr>
+          <tr><th>${esc(t('inc.pasture'))}</th><td>${fmt(inc.pasture)}</td></tr>
+          ${inc.tribute ? `<tr><th>${esc(t('inc.tribute'))}</th><td class="pos">+${fmt(inc.tribute)}</td></tr>` : ''}
+          ${inc.tributePaid ? `<tr><th>${esc(t('inc.tributePaid'))}</th><td class="neg">−${fmt(inc.tributePaid)}</td></tr>` : ''}
+          <tr><th>${esc(t('inc.upkeep'))}</th><td class="neg">−${fmt(inc.upkeep)}</td></tr>
+          <tr><th>${esc(t('inc.admin'))}</th><td class="neg">−${fmt(inc.admin)}</td></tr>
+          <tr><th><b>${esc(t('inc.net'))}</b></th><td><b class="${inc.net >= 0 ? 'pos' : 'neg'}">${signed(inc.net, 1)}</b></td></tr>
+          <tr><th>🐎 ${esc(t('res.horses'))}</th><td>+${fmt(inc.horses)}</td></tr>
+          <tr><th>📜 ${esc(t('res.research'))}</th><td>+${fmt(inc.research)}</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>${esc(t('fac.policies'))}</h3>
+        <div class="policy"><span>${esc(t('pol.tax'))}</span>${['low', 'normal', 'high'].map((v) => `<button data-act="pol" data-k="tax" data-v="${v}" class="${f.policies.tax === v ? 'on' : ''}">${esc(t('pol.tax.' + v))}</button>`).join('')}</div>
+        <div class="policy"><span>${esc(t('pol.tolerance'))}</span>${['tolerant', 'normal', 'strict'].map((v) => `<button data-act="pol" data-k="tolerance" data-v="${v}" class="${f.policies.tolerance === v ? 'on' : ''}">${esc(t('pol.tol.' + v))}</button>`).join('')}</div>
+        ${f.techs.includes('iqta') ? `<div class="policy"><span>${esc(t('pol.iqta'))}</span><button data-act="pol" data-k="iqta" data-v="${f.policies.iqta ? '0' : '1'}" class="${f.policies.iqta ? 'on' : ''}">${esc(f.policies.iqta ? t('pol.on') : t('pol.off'))}</button><small class="muted">${esc(t('pol.iqtaDesc'))}</small></div>` : ''}
+        <h3>${esc(t('fac.decisions'))}</h3>
+        <div class="decisions">${decisions.join('')}</div>
+        <h3>${esc(t('fac.goals'))}</h3>
+        ${goalsList(goals)}
+      </div>
+    </div>`;
+  };
+  function dec(id, name, desc, ok, why) {
+    return `<div class="decision ${ok ? '' : 'dis'}"><div><b>${esc(name)}</b><br><small class="muted">${esc(desc)}</small></div>${ok ? `<button data-act="dec" data-id="${esc(id)}">${esc(t('dec.do'))}</button>` : `<small class="neg">${esc(why || '')}</small>`}</div>`;
+  }
+  return openModal(render(), {
+    wide: true,
+    handlers: (close, wrap) => {
+      const rerender = () => { wrap.querySelector('.modal-body').innerHTML = render(); refreshAll(false); };
+      return {
+        pol: (el) => {
+          const f = fac(G.s.player);
+          if (el.dataset.k === 'iqta') f.policies.iqta = el.dataset.v === '1';
+          else f.policies[el.dataset.k] = el.dataset.v;
+          clearModCache();
+          rerender();
+        },
+        dec: async (el) => {
+          const f = fac(G.s.player);
+          const [kind, arg] = el.dataset.id.split(':');
+          if (kind === 'gov') { f.gov = arg; f.govUnrest = 8; f.prestige -= 40; log('log.govChange', { fac: f.n, gov: arg }, { f: f.id, imp: true }); }
+          if (kind === 'title') {
+            if (arg === 'sultan') {
+              const acc = proposalAcceptance('sultan', f.id, 'abbasid');
+              if (acc > 0 || G.s.player === 'abbasid') { claimTitle(f.id, 'sultan'); rel(f.id, 'abbasid').mod += 10; toast(t('dec.sultanGranted')); }
+              else { rel(f.id, 'abbasid').mod -= 5; f.prestige -= 5; toast(t('dec.sultanRefused')); }
+            } else claimTitle(f.id, arg);
+          }
+          if (kind === 'holy') { f.holyWar = 8; f.prestige -= 40; }
+          if (kind === 'rel') { f.prestige -= 60; changeReligion(f.id, arg); }
+          if (kind === 'law') { f.succession = arg; f.prestige -= 50; f.legitimacy = clamp(f.legitimacy - 10, 0, 100); updateHeir(f.id); }
+          if (kind === 'vizier') { const v = appointVizier(f.id); if (v) toast(t('dec.vizierDone', { name: L(v.n) })); }
+          clearModCache();
+          rerender();
+        },
+      };
+    },
+  });
+}
+
+function goalsList(goals) {
+  return `<ul class="goals">${goals.map((g) => {
+    let label = '';
+    if (g.t === 'own') label = t('goal.own', { list: g.p.map((p) => L(provName(p))).join(', ') });
+    else if (g.t === 'count') label = t('goal.count', { n: g.n });
+    else if (g.t === 'title') label = t('goal.title', { title: L(TITLES[g.id].n) });
+    else if (g.t === 'tech') label = t('goal.tech', { n: g.n });
+    else if (g.t === 'survive') label = t('goal.survive', { year: END_YEAR });
+    else if (g.t === 'independent') label = t('goal.independent');
+    return `<li class="${g.done ? 'done' : ''}">${g.done ? '✅' : '⬜'} ${esc(label)} <small class="muted">${esc(g.prog)}</small></li>`;
+  }).join('')}</ul>`;
+}
+
+// ---------- Diplomatie ----------
+export function diplomacyScreen(initial) {
+  let selected = initial && initial !== G.s.player ? initial : null;
+  const render = () => {
+    const s = G.s, me = s.player;
+    const nbs = new Set(neighborsOf(me));
+    const list = aliveFactions().filter((f) => f.id !== me && f.id !== 'rebels' && (factionProvinces(f.id).length || factionArmies(f.id).length));
+    const prio = (f) => (atWar(me, f.id) ? 0 : f.overlord === me || fac(me).overlord === f.id ? 1 : relPeek(me, f.id)?.alliance ? 2 : nbs.has(f.id) ? 3 : 4);
+    list.sort((a, b) => prio(a) - prio(b) || factionProvinces(b.id).length - factionProvinces(a.id).length);
+    if (!selected && list.length) selected = list[0].id;
+    const status = (fid) => {
+      const r = relPeek(me, fid);
+      const out = [];
+      if (atWar(me, fid)) out.push(`<span class="tag war">${esc(t('dip.war'))}</span>`);
+      if (r?.alliance) out.push(`<span class="tag ally">${esc(t('dip.ally'))}</span>`);
+      if (r?.trade) out.push(`<span class="tag trade">${esc(t('dip.trade'))}</span>`);
+      if (fac(fid).overlord === me) out.push(`<span class="tag vassal">${esc(t('dip.vassal'))}</span>`);
+      if (fac(me).overlord === fid) out.push(`<span class="tag vassal">${esc(t('dip.overlord'))}</span>`);
+      if (truceLeft(me, fid) > 0 && !atWar(me, fid)) out.push(`<span class="tag truce">${esc(t('dip.truce'))} ${truceLeft(me, fid)}</span>`);
+      return out.join('');
+    };
+    const left = list.map((f) => `<button class="dlist ${f.id === selected ? 'on' : ''}" data-act="sel" data-f="${f.id}">${swatch(f.color)}<span>${esc(L(f.n))}</span><small class="${opinion(me, f.id) >= 0 ? 'pos' : 'neg'}">${signed(opinion(me, f.id))}</small>${status(f.id)}</button>`).join('');
+    let right = '';
+    if (selected && fac(selected)) {
+      const f = fac(selected);
+      const ruler = chr(f.ruler);
+      const war = atWar(me, selected);
+      const r = relPeek(me, selected);
+      const chance = (v) => (v > 20 ? `<span class="pos">${esc(t('ch.veryLikely'))}</span>` : v > 0 ? `<span class="pos">${esc(t('ch.likely'))}</span>` : v > -20 ? `<span class="neg">${esc(t('ch.unlikely'))}</span>` : `<span class="neg">${esc(t('ch.no'))}</span>`);
+      const acts = [];
+      if (war) {
+        acts.push(act('peace', '🕊 ' + t('dip.offerPeace'), ''));
+      } else {
+        if (f.overlord !== me && fac(me).overlord !== selected) acts.push(act('war', '⚔ ' + t('dip.declareWar'), truceLeft(me, selected) > 0 ? t('dip.truceWarn') : ''));
+        if (!r?.trade) acts.push(act('trade', '🐫 ' + t('dip.proposeTrade'), chance(proposalAcceptance('trade', me, selected))));
+        else acts.push(act('untrade', '✖ ' + t('dip.cancelTrade'), ''));
+        if (!r?.alliance) acts.push(act('alliance', '🤝 ' + t('dip.proposeAlliance'), chance(proposalAcceptance('alliance', me, selected))));
+        else acts.push(act('unally', '✖ ' + t('dip.breakAlliance'), ''));
+        if (!(r?.nap > s.turn)) acts.push(act('nap', '📜 ' + t('dip.proposeNap'), chance(proposalAcceptance('nap', me, selected))));
+        if (!(r?.married && s.turn - r.married < 20)) acts.push(act('marriage', '💍 ' + t('dip.marriage'), chance(proposalAcceptance('marriage', me, selected))));
+        if (f.overlord !== me && !f.overlord) acts.push(act('vassalize', '👑 ' + t('dip.demandVassal'), chance(proposalAcceptance('vassalize', me, selected))));
+        if (f.overlord === me) acts.push(act('release', '🕊 ' + t('dip.releaseVassal'), ''));
+        if (fac(me).overlord === selected) acts.push(act('independence', '⚔ ' + t('dip.independence'), ''));
+      }
+      acts.push(`<div class="giftrow">🎁 ${esc(t('dip.gift'))}: ${[50, 100, 250].map((n) => `<button data-act="gift" data-n="${n}" ${fac(me).gold < n ? 'disabled' : ''}>${n}</button>`).join('')}</div>`);
+      right = `<div class="dhead">${swatch(f.color)}<h3>${esc(L(f.n))}</h3></div>
+        <table class="kv small">
+          <tr><th>${esc(t('fac.ruler'))}</th><td>${ruler ? charBadge(ruler) : '—'}</td></tr>
+          <tr><th>${esc(t('fac.religion'))}</th><td>${esc(L(RELIGIONS[f.religion].n))} · ${esc(L(CULTURES[f.culture].n))}</td></tr>
+          <tr><th>${esc(t('fac.gov'))}</th><td>${esc(L(GOVERNMENTS[f.gov].n))}</td></tr>
+          <tr><th>${esc(t('dip.provinces'))}</th><td>${factionProvinces(selected).length}</td></tr>
+          <tr><th>${esc(t('dip.power'))}</th><td>${powerCompare(militaryPower(me), militaryPower(selected))}</td></tr>
+          <tr><th>${esc(t('dip.opinion'))}</th><td>${signed(opinion(me, selected))}</td></tr>
+          ${war ? `<tr><th>${esc(t('dip.warscore'))}</th><td>${signed(warScore(me, selected))}</td></tr>` : ''}
+          <tr><th>${esc(t('fac.infamy'))}</th><td>${Math.round(f.infamy)}</td></tr>
+          ${f.titles.length ? `<tr><th>${esc(t('fac.titles'))}</th><td>${f.titles.map((x) => esc(L(TITLES[x].n))).join(', ')}</td></tr>` : ''}
+          ${f.overlord ? `<tr><th>${esc(t('fac.overlord'))}</th><td>${esc(L(facName(f.overlord)))}</td></tr>` : ''}
+        </table>
+        <div class="dip-actions">${acts.join('')}</div>`;
+    }
+    return `<h2>🤝 ${esc(t('ui.diplomacy'))}</h2><div class="dipgrid"><div class="dleft">${left}</div><div class="dright">${right}</div></div>`;
+  };
+  function act(id, label, extra) {
+    return `<div class="dact"><button data-act="${id}">${esc(label)}</button> <small>${extra}</small></div>`;
+  }
+  return openModal(render(), {
+    wide: true, cls: 'dip',
+    handlers: (close, wrap) => {
+      const rerender = () => { wrap.querySelector('.modal-body').innerHTML = render(); refreshAll(); };
+      const me = () => G.s.player;
+      const tryProp = (kind, fn) => {
+        if (proposalAcceptance(kind, me(), selected) > 0) { fn(); toast(t('dip.accepted')); }
+        else { rel(me(), selected).mod -= 3; toast(t('dip.refused')); }
+        rerender();
+      };
+      return {
+        sel: (el) => { selected = el.dataset.f; rerender(); },
+        war: async () => {
+          const ok = await confirmDialog(t('dip.warConfirm', { fac: L(facName(selected)) }), t('dip.declareWar'), t('ui.cancel'));
+          if (ok) { declareWar(me(), selected); rerender(); }
+        },
+        peace: async () => { await peaceDialog(selected); rerender(); },
+        trade: () => tryProp('trade', () => setTrade(me(), selected, true)),
+        untrade: () => { setTrade(me(), selected, false); rel(me(), selected).mod -= 10; rerender(); },
+        alliance: () => tryProp('alliance', () => setAlliance(me(), selected)),
+        unally: () => { breakAlliance(me(), selected, true); rerender(); },
+        nap: () => tryProp('nap', () => setNap(me(), selected)),
+        marriage: () => tryProp('marriage', () => marriage(me(), selected)),
+        vassalize: () => tryProp('vassalize', () => makeVassal(selected, me())),
+        release: () => { releaseVassal(me(), selected); rerender(); },
+        independence: async () => {
+          const ok = await confirmDialog(t('dip.independenceConfirm'), t('dip.independence'), t('ui.cancel'));
+          if (ok) { fac(me()).overlord = null; declareWar(me(), selected); rerender(); }
+        },
+        gift: (el) => { if (giftGold(me(), selected, +el.dataset.n)) toast(t('dip.giftDone')); rerender(); },
+      };
+    },
+  });
+}
+
+function powerCompare(a, b) {
+  const r = a / (a + b + 1);
+  return `<span class="pcomp"><span style="width:${Math.round(r * 100)}%"></span></span> <small>${esc(t('dip.us'))} ${fmt(a / 100)} · ${esc(t('dip.them'))} ${fmt(b / 100)}</small>`;
+}
+
+function peaceDialog(other) {
+  const me = G.s.player;
+  const terms = { gold: 0, goldFrom: null, provinces: [], vassal: null };
+  const theirBorder = factionProvinces(other).filter((p) => neighbors(p).some((n) => prov(n).owner === me));
+  const myBorder = factionProvinces(me).filter((p) => neighbors(p).some((n) => prov(n).owner === other));
+  const render = () => {
+    const v = peaceAcceptance(me, other, terms);
+    const verdict = v > 0 ? `<b class="pos">${esc(t('peace.accept'))}</b>` : `<b class="neg">${esc(t('peace.refuse'))}</b>`;
+    return `<h2>🕊 ${esc(t('peace.title', { fac: L(facName(other)) }))}</h2>
+    <p class="muted">${esc(t('dip.warscore'))}: ${signed(warScore(me, other))}</p>
+    <h4>${esc(t('peace.gold'))}</h4>
+    <div class="policy">${[0, 100, 250, 500].map((n) => `<button data-act="dg" data-n="${n}" class="${terms.goldFrom === other && terms.gold === n || (n === 0 && !terms.gold) ? 'on' : ''}">${n ? '+' + n : '—'}</button>`).join('')}
+      ${[100, 250].map((n) => `<button data-act="og" data-n="${n}" class="${terms.goldFrom === me && terms.gold === n ? 'on' : ''}">−${n}</button>`).join('')}</div>
+    ${theirBorder.length ? `<h4>${esc(t('peace.demandProv'))}</h4><div class="chips">${theirBorder.map((p) => `<button data-act="tp" data-p="${p}" class="${terms.provinces.includes(p) ? 'on' : ''}">${esc(L(provName(p)))}</button>`).join('')}</div>` : ''}
+    ${myBorder.length ? `<h4>${esc(t('peace.offerProv'))}</h4><div class="chips">${myBorder.map((p) => `<button data-act="tp" data-p="${p}" class="${terms.provinces.includes(p) ? 'on' : ''}">${esc(L(provName(p)))}</button>`).join('')}</div>` : ''}
+    <h4>${esc(t('peace.vassal'))}</h4><div class="policy"><button data-act="vs" class="${terms.vassal === other ? 'on' : ''}">${esc(t('peace.theyVassal'))}</button></div>
+    <p>${esc(t('peace.verdict'))}: ${verdict}</p>
+    <div class="actions center"><button class="primary" data-act="send">${esc(t('peace.send'))}</button><button data-act="cancel">${esc(t('ui.cancel'))}</button></div>`;
+  };
+  return openModal(render(), {
+    handlers: (close, wrap) => {
+      const rr = () => { wrap.querySelector('.modal-body').innerHTML = render(); };
+      return {
+        dg: (el) => { terms.gold = +el.dataset.n; terms.goldFrom = terms.gold ? other : null; rr(); },
+        og: (el) => { terms.gold = +el.dataset.n; terms.goldFrom = me; rr(); },
+        tp: (el) => { const p = el.dataset.p; const i = terms.provinces.indexOf(p); if (i >= 0) terms.provinces.splice(i, 1); else terms.provinces.push(p); rr(); },
+        vs: () => { terms.vassal = terms.vassal ? null : other; rr(); },
+        send: () => {
+          if (peaceAcceptance(me, other, terms) > 0) { makePeace(me, other, terms); toast(t('dip.accepted')); close(true); }
+          else { toast(t('dip.refused')); rr(); }
+        },
+        cancel: () => close(false),
+      };
+    },
+  });
+}
+
+// ---------- Forschung ----------
+export function researchScreen() {
+  const render = () => {
+    const f = fac(G.s.player);
+    const inc = factionIncome(f.id);
+    const cur = f.research.cur ? TECHS[f.research.cur] : null;
+    let html = `<h2>📜 ${esc(t('ui.research'))}</h2>
+      <p class="center">${esc(t('rs.perTurn', { n: fmt(inc.research) }))} · ${cur ? `${esc(t('rs.current'))}: <b>${esc(L(cur.n))}</b> ${bar(f.research.pts / techCost(cur, f.techs.length), '#4a235a')} ${Math.round(f.research.pts)}/${techCost(cur, f.techs.length)}` : `<span class="neg">${esc(t('res.noResearch'))}</span>`}</p>
+      <div class="techgrid">`;
+    for (const [br, bd] of Object.entries(TECH_BRANCHES)) {
+      const list = Object.entries(TECHS).filter(([, x]) => x.br === br).sort((a, b) => a[1].tier - b[1].tier);
+      html += `<div class="techcol"><h3 style="color:${bd.color}">${esc(L(bd.n))}</h3>`;
+      for (const [id, x] of list) {
+        const done = f.techs.includes(id);
+        const avail = techAvailable(f.id, id);
+        const isCur = f.research.cur === id;
+        const reqs = x.req.map((r) => L(TECHS[r].n)).join(', ');
+        const cost = techCost(x, f.techs.length);
+        const turns = inc.research > 0 ? Math.ceil((cost - (isCur ? f.research.pts : 0)) / inc.research) : '∞';
+        html += `<button class="tech ${done ? 'done' : avail ? 'avail' : 'locked'} ${isCur ? 'cur' : ''}" data-act="pick" data-id="${id}" ${avail && !done ? '' : 'disabled'}>
+          <b>${done ? '✓ ' : ''}${esc(L(x.n))}</b>
+          <small>${esc(L(x.desc))}</small>
+          <small class="muted">${reqs ? esc(t('rs.requires')) + ': ' + esc(reqs) + ' · ' : ''}${x.minYear ? esc(t('rs.fromYear', { y: x.minYear })) + ' · ' : ''}${done ? '' : `📜${cost} (~${turns} ${esc(t('rs.turns'))})`}</small>
+        </button>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+    return html;
+  };
+  return openModal(render(), {
+    wide: true,
+    handlers: (close, wrap) => ({
+      pick: (el) => {
+        const f = fac(G.s.player);
+        if (f.research.cur !== el.dataset.id) { f.research.pts = Math.round(f.research.pts * 0.5); f.research.cur = el.dataset.id; }
+        wrap.querySelector('.modal-body').innerHTML = render();
+        refreshAll(false);
+      },
+    }),
+  });
+}
+
+// ---------- Dynastie ----------
+export function dynastyScreen() {
+  const render = () => {
+    const s = G.s, f = fac(s.player);
+    const members = dynastyMembers(f.id).sort((a, b) => a.born - b.born);
+    const gens = generals(f.id).filter((c) => !c.dyn);
+    const past = Object.values(s.chars).filter((c) => !c.alive && c.fac === f.id && c.pastRuler).slice(-8);
+    const card = (c) => {
+      const role = c.id === f.ruler ? t('dyn.ruler') : c.id === f.heir ? t('dyn.heir') : c.role === 'vizier' ? t('fac.vizier') : c.role === 'general' ? t('dyn.general') : c.female ? t('dyn.female') : t('dyn.male');
+      const armyTxt = c.army && s.armies[c.army] ? `<br><small>⚑ ${esc(L(pdef(s.armies[c.army].prov).n))}</small>` : '';
+      return `<div class="ccard ${c.id === f.ruler ? 'ruler' : ''} ${c.id === f.heir ? 'heir' : ''}"><div class="role">${esc(role)}</div>${charBadge(c)}<small>${esc(t('dyn.loyalty'))}: ${c.id === f.ruler ? '—' : loyalty(c)}</small>${armyTxt}</div>`;
+    };
+    return `<h2>👑 ${esc(t('ui.dynasty'))} – ${esc(L(f.dyn))}</h2>
+      <p class="center">${esc(t('fac.succession'))}: <b>${esc(L(SUCCESSION_LAWS[f.succession].n))}</b> · ${esc(t('fac.legitimacy'))}: ${Math.round(f.legitimacy)}</p>
+      <h3>${esc(t('dyn.family'))}</h3><div class="ccards">${members.map(card).join('')}</div>
+      <h3>${esc(t('dyn.generals'))}</h3><div class="ccards">${gens.map(card).join('') || `<p class="muted">—</p>`}</div>
+      <div class="actions center"><button data-act="hire" ${f.gold >= hireGeneralCost(f.id) ? '' : 'disabled'}>⚔ ${esc(t('dyn.hire', { n: hireGeneralCost(f.id) }))}</button></div>`;
+  };
+  return openModal(render(), {
+    wide: true,
+    handlers: (close, wrap) => ({
+      hire: () => { const g = hireGeneral(G.s.player); if (g) toast(t('dyn.hired', { name: L(g.n) })); wrap.querySelector('.modal-body').innerHTML = render(); refreshAll(false); },
+    }),
+  });
+}
+
+// ---------- Chronik & Rangliste ----------
+export function chronicleScreen() {
+  let onlyImp = false;
+  const render = () => {
+    const s = G.s;
+    const list = s.log.slice().reverse().filter((e) => !onlyImp || e.imp || e.f === s.player).slice(0, 250);
+    return `<h2>📖 ${esc(t('ui.chronicle'))}</h2>
+      <div class="policy center"><button data-act="f" class="${onlyImp ? '' : 'on'}">${esc(t('chr.all'))}</button><button data-act="f" class="${onlyImp ? 'on' : ''}">${esc(t('chr.important'))}</button></div>
+      <div class="report">${list.map((e) => `<p class="${e.imp ? 'imp' : ''}"><small class="muted">${esc(dateText(e))}</small> ${esc(formatLog(e))}</p>`).join('')}</div>`;
+  };
+  return openModal(render(), { wide: true, handlers: (close, wrap) => ({ f: () => { onlyImp = !onlyImp; wrap.querySelector('.modal-body').innerHTML = render(); } }) });
+}
+
+function rankingTable() {
+  const r = ranking().slice(0, 20);
+  return `<table class="rank"><tr><th>#</th><th>${esc(t('rk.faction'))}</th><th>${esc(t('dip.provinces'))}</th><th>${esc(t('rk.score'))}</th></tr>
+    ${r.map((x, i) => `<tr class="${x.id === G.s.player ? 'me' : ''}"><td>${i + 1}</td><td>${swatch(fac(x.id).color)}${esc(L(fac(x.id).n))}</td><td>${x.provs}</td><td>${x.score}</td></tr>`).join('')}</table>`;
+}
+
+export function rankingScreen() {
+  const html = `<h2>🏆 ${esc(t('ui.ranking'))}</h2><div class="cols"><div>${rankingTable()}</div><div><h3>${esc(t('fac.goals'))}</h3>${goalsList(goalStatus(G.s.player))}<p class="muted small">${esc(t('rk.hint', { year: END_YEAR }))}</p></div></div>`;
+  return openModal(html, { wide: true });
+}
+
+// ---------- Spielmenü ----------
+export function gameMenu() {
+  const render = () => `<h2>☰ ${esc(t('ui.menu'))}</h2>
+    <h3>${esc(t('menu.save'))}</h3>
+    <div class="slots">${SLOTS.filter((x) => x !== 'auto').map((sl) => { const m = slotMeta(sl); return `<button data-act="save" data-s="${sl}">💾 ${esc(t('menu.slot'))} ${sl}<small>${m ? esc(L(m.facName || { de: m.player })) + ' · ' + m.year : esc(t('menu.empty'))}</small></button>`; }).join('')}</div>
+    <h3>${esc(t('menu.load'))}</h3>
+    <div class="slots">${SLOTS.map((sl) => { const m = slotMeta(sl); return `<button data-act="load" data-s="${sl}" ${m ? '' : 'disabled'}>📂 ${sl === 'auto' ? esc(t('menu.auto')) : esc(t('menu.slot')) + ' ' + sl}<small>${m ? esc(L(m.facName || { de: m.player })) + ' · ' + esc(L(SEASONS[m.season])) + ' ' + m.year : esc(t('menu.empty'))}</small></button>`; }).join('')}</div>
+    <div class="actions center">
+      <button data-act="export">⬇ ${esc(t('menu.export'))}</button>
+      <button data-act="import">⬆ ${esc(t('menu.import'))}</button>
+      <button data-act="lang">🌐 ${lang() === 'de' ? 'Türkçe' : 'Deutsch'}</button>
+      <button data-act="help">❓ ${esc(t('menu.help'))}</button>
+      <button data-act="quit">🚪 ${esc(t('menu.quit'))}</button>
+    </div>`;
+  return openModal(render(), {
+    handlers: (close, wrap) => ({
+      save: (el) => { if (saveSlot(el.dataset.s)) toast(t('menu.saved')); wrap.querySelector('.modal-body').innerHTML = render(); },
+      load: (el) => { const d = loadSlotData(el.dataset.s); if (d && UIState.onLoad) { close(); UIState.onLoad(d); } },
+      export: () => exportSave(),
+      import: async () => { const d = await importSave(); if (d && UIState.onLoad) { close(); UIState.onLoad(d); } else if (!d) toast(t('menu.importFail')); },
+      lang: () => { toggleLang(); wrap.querySelector('.modal-body').innerHTML = render(); },
+      help: () => helpScreen(),
+      quit: async () => { const ok = await confirmDialog(t('menu.quitConfirm'), t('menu.quit'), t('ui.cancel')); if (ok) { close(); UIState.onExit?.(); } },
+    }),
+  });
+}
+
+export function helpScreen() {
+  const html = `<h2>❓ ${esc(t('menu.help'))}</h2><div class="help">${t('help.html', { year: END_YEAR })}</div>`;
+  return openModal(html, { wide: true });
+}

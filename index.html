@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Turan – Steppe und Sultanat</title>
+  <meta name="description" content="Rundenbasiertes Strategiespiel über die Türken und Turkvölker in Zentralasien und dem Nahen Osten, 10.–13. Jahrhundert.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="loading"><div class="load-inner"><h1>Turan</h1><p id="loading-text">…</p></div></div>
+
+  <div id="app">
+    <canvas id="map"></canvas>
+
+    <!-- Hauptmenü -->
+    <section id="menu" class="screen">
+      <div class="menu-card"></div>
+    </section>
+
+    <!-- Spielvorbereitung -->
+    <section id="setup" class="screen"></section>
+
+    <!-- Spieloberfläche -->
+    <section id="game">
+      <header id="topbar"></header>
+      <div id="mapmodes"></div>
+      <div id="legend"></div>
+      <aside id="panel"></aside>
+    </section>
+  </div>
+
+  <div id="tooltip"></div>
+  <div id="toast"></div>
+  <div id="turnwait"><div class="tw-inner"><p id="turnwait-text"></p><div class="tw-bar"><span id="turnwait-bar"></span></div></div></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
