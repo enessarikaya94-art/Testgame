@@ -1,6 +1,6 @@
 // Neues Spiel, Rundenablauf, Siegbedingungen.
 
-import { G, computeBorders, createGame, fac, prov, factionProvinces, factionArmies, aliveFactions, log, END_YEAR, relPeek, rng, S } from './state.js';
+import { G, computeBorders, createGame, fac, prov, factionProvinces, factionArmies, aliveFactions, log, END_YEAR, relPeek, rng, S, withArmyIndex } from './state.js';
 import { setupRulers, processCharacters, createChar, updateHeir, generals, age, stat } from './characters.js';
 import { startingArmies, beginSieges, progressSieges, processRaids, processSupply, resetMovement, checkFactionDeath, assignGeneral } from './military.js';
 import { processEconomy, computeDistances, countTrade, clearModCache, orderBreakdown, factionIncome, processRebellions } from './economy.js';
@@ -11,6 +11,7 @@ import { processWorldEvents } from './world-events.js';
 import { initMarket, updateMarket, expirePayments } from './market.js';
 import { SCENARIOS } from '../data/scenarios.js';
 import { FACTIONS, TITLES } from '../data/factions.js';
+import { initDiscovery, processDiscovery } from './discovery.js';
 
 export function newGame(scenarioId, playerFid, mapData, seed) {
   const s = createGame(scenarioId, playerFid, seed ?? Math.floor(Math.random() * 1e9), mapData);
@@ -19,6 +20,7 @@ export function newGame(scenarioId, playerFid, mapData, seed) {
   assignStartingGenerals();
   initMarket();
   refreshCaches();
+  initDiscovery();
   for (const pid in s.provinces) {
     const p = s.provinces[pid];
     p.order = orderBreakdown(pid).total;
@@ -79,11 +81,13 @@ export async function endTurn(progress) {
     processRaids();
     processSupply();
     refreshCaches();
-    for (const f of aliveFactions()) {
+    for (const f of aliveFactions().slice()) {
       if (f.id === 'rebels') continue;
-      if (!factionProvinces(f.id).length) { checkFactionDeath(f.id, null); if (!f.alive) continue; }
-      processEconomy(f.id);
+      if (!factionProvinces(f.id).length) checkFactionDeath(f.id, null);
     }
+    withArmyIndex(() => {
+      for (const f of aliveFactions()) if (f.id !== 'rebels') processEconomy(f.id);
+    });
     for (const f of aliveFactions()) if (f.id !== 'rebels') processCharacters(f.id);
     // Neue unabhängige Fraktionen brauchen Herrscher
     if (s.pendingRulers?.length) {
@@ -101,6 +105,7 @@ export async function endTurn(progress) {
     expirePayments();
     validateTitles();
     runGlobalEvents();
+    processDiscovery();
     processWorldEvents();
     for (const f of aliveFactions()) rollEvents(f.id);
     for (const f of aliveFactions()) if (f.id !== 'rebels' && !factionProvinces(f.id).length) checkFactionDeath(f.id, null);

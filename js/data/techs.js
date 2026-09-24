@@ -229,6 +229,67 @@ export const TECHS = {
     desc: { de: 'Chroniken sichern den Ruhm der Dynastie. Ansehen +2 pro Runde, Legitimität bei der Nachfolge.', tr: 'Vakayinameler hanedanın şanını korur. Tur başına itibar +2, verasette meşruiyet.' },
     mods: { prestige: 2, succession: 0.15 },
   },
+  // --- Wissen aus fernen Ländern (reqRegion: Kontakt nötig, reveal: enthüllt Weltgegend) ---
+  gunpowder: {
+    br: 'mil', tier: 3, req: ['siege_mangonel'], cost: 170, minYear: 1040, reqRegion: 'east',
+    n: { de: 'Schießpulver', tr: 'Barut' },
+    desc: { de: 'Das chinesische „Feuermittel“ aus Salpeter, Schwefel und Kohle. Schaltet Feuerlanzen frei, Sturmangriffe +10 %. Setzt Kontakt mit China voraus.', tr: 'Güherçile, kükürt ve kömürden Çin\'in "ateş ilacı". Ateş mızraklarını açar, hücumlar +%10. Çin ile temas gerektirir.' },
+    mods: { assault: 0.1 },
+  },
+  longbow: {
+    br: 'mil', tier: 2, req: ['composite_bow'], cost: 90, minYear: 1130, reqRegion: 'europe',
+    n: { de: 'Langbogen', tr: 'Uzun Yay' },
+    desc: { de: 'Der walisische Eibenbogen durchschlägt Kettenhemden. Schaltet Langbogenschützen frei (England, Wales), Fernkampf +5 %. Setzt Kontakt mit dem Abendland voraus.', tr: 'Gal porsuk yayı zincir zırhı deler. Uzun yaylı okçuları açar (İngiltere), uzak muharebe +%5. Batı ile temas gerektirir.' },
+    mods: { ranged: 0.05 },
+  },
+  west_envoys: {
+    br: 'adm', tier: 2, req: ['diwan'], cost: 100, reveal: 'europe',
+    n: { de: 'Gesandte ins Abendland', tr: 'Batı\'ya Elçiler' },
+    desc: { de: 'Kaufleute und Gesandte reisen zu den Franken, nach Rom und in die Länder jenseits der Donau. Enthüllt Europa auf der Karte. Ansehen +0,5.', tr: 'Tüccarlar ve elçiler Frenklere, Roma\'ya ve Tuna\'nın ötesine gider. Avrupa\'yı haritada açar. İtibar +0,5.' },
+    mods: { prestige: 0.5 },
+  },
+  east_envoys: {
+    br: 'adm', tier: 2, req: ['diwan'], cost: 100, reveal: 'east',
+    n: { de: 'Gesandte an den Kaiserhof', tr: 'İmparatorluk Sarayına Elçiler' },
+    desc: { de: 'Tributgesandtschaften ziehen über den Hexi-Korridor nach China, in die Mongolei und nach Tibet. Enthüllt den Fernen Osten. Handelsrouten +3 %.', tr: 'Haraç elçilikleri Hexi Koridoru üzerinden Çin\'e, Moğolistan\'a ve Tibet\'e gider. Uzak Doğu\'yu açar. Ticaret yolları +%3.' },
+    mods: { route: 0.03 },
+  },
+  orient_envoys: {
+    br: 'adm', tier: 2, req: ['diwan'], cost: 100, reveal: 'orient',
+    n: { de: 'Pilger ins Morgenland', tr: 'Doğu\'ya Hacılar' },
+    desc: { de: 'Pilger, Kaufleute und Mönche berichten vom Heiligen Land, von Bagdad und den Steppen. Enthüllt den Orient. Ordnung +1.', tr: 'Hacılar, tüccarlar ve rahipler Kutsal Topraklar\'dan, Bağdat\'tan ve bozkırlardan haber getirir. Doğu\'yu açar. Asayiş +1.' },
+    mods: { order: 1 },
+  },
+  sahara_caravans: {
+    br: 'eco', tier: 2, req: ['caravanserai'], cost: 110, reveal: 'africa',
+    n: { de: 'Karawanen durch die Sahara', tr: 'Sahra Kervanları' },
+    desc: { de: 'Mit Kamelen und Salzbarren zu den Goldländern des Sudan und nach Abessinien. Enthüllt Afrika. Handelsrouten +5 %.', tr: 'Develer ve tuz kalıplarıyla Sudan\'ın altın ülkelerine ve Habeşistan\'a. Afrika\'yı açar. Ticaret yolları +%5.' },
+    mods: { route: 0.05 },
+  },
+  compass: {
+    br: 'eco', tier: 2, req: [], cost: 110, reqRegion: 'east',
+    n: { de: 'Kompass', tr: 'Pusula' },
+    desc: { de: 'Die „südweisende Nadel“ der chinesischen Seefahrer. Handelsrouten +10 %. Setzt Kontakt mit China voraus.', tr: 'Çinli denizcilerin "güneyi gösteren iğnesi". Ticaret yolları +%10. Çin ile temas gerektirir.' },
+    mods: { route: 0.1 },
+  },
+  three_field: {
+    br: 'eco', tier: 2, req: [], cost: 100, minYear: 1050, reqRegion: 'europe',
+    n: { de: 'Dreifelderwirtschaft', tr: 'Üç Tarla Sistemi' },
+    desc: { de: 'Schwerer Pflug und Fruchtwechsel aus dem Abendland. Wachstum und Steuern +3 %. Setzt Kontakt mit Europa voraus.', tr: 'Batı\'dan ağır saban ve ekim nöbeti. Büyüme ve vergi +%3. Avrupa ile temas gerektirir.' },
+    mods: { growth: 0.0006, tax: 0.03 },
+  },
+  printing: {
+    br: 'cul', tier: 3, req: ['paper'], cost: 150, reqRegion: 'east',
+    n: { de: 'Blockdruck', tr: 'Baskı Sanatı' },
+    desc: { de: 'Gedruckte Bücher, Kalender und Papiergeld. Forschung +12 %. Setzt Kontakt mit China voraus.', tr: 'Basılı kitaplar, takvimler ve kâğıt para. Araştırma +%12. Çin ile temas gerektirir.' },
+    mods: { research: 0.12 },
+  },
+  world_map: {
+    br: 'cul', tier: 3, req: ['mathematics'], cost: 180, minYear: 1120, reveal: 'all',
+    n: { de: 'Weltkarte des al-Idrisi', tr: 'İdrisi\'nin Dünya Haritası' },
+    desc: { de: 'Eine silberne Weltscheibe und ein Buch aller Länder: Enthüllt die ganze bekannte Welt. Forschung und Handelsrouten +5 %.', tr: 'Gümüş bir dünya diski ve bütün ülkelerin kitabı: Bilinen bütün dünyayı açar. Araştırma ve ticaret yolları +%5.' },
+    mods: { research: 0.05, route: 0.05 },
+  },
 };
 
 export function techCost(tech, doneCount) {

@@ -5,7 +5,8 @@ import { PROVINCES } from '../data/provinces.js';
 import { TERRAINS, RELIGIONS, CULTURES, TRADE_ROUTES } from '../data/world.js';
 import { CELL } from './mapgen.js';
 import { mulberry32, hexToRgb } from '../util.js';
-import { L } from '../i18n.js';
+import { L, t } from '../i18n.js';
+import { REGIONS, REGION_IDS } from '../data/regions.js';
 
 const WASTE_COLORS = { desert: '#e2cd92', mountain: '#b8a480', forest: '#a8b07c', steppe: '#d6c78c', hills: '#c9b98a', plains: '#cdc690' };
 const INK = '#3e2f1f';
@@ -185,6 +186,7 @@ export class MapView {
     ctx.restore();
     // Kompassrose
     this.drawCompass(ctx, ...project(64.5, 15.5), 70);
+    this.drawCompass(ctx, ...project(-9.0, 46.0), 60);
     // Rahmen
     ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.strokeRect(3, 3, WORLD_W - 6, WORLD_H - 6);
     ctx.lineWidth = 1.5; ctx.strokeRect(12, 12, WORLD_W - 24, WORLD_H - 24);
@@ -320,15 +322,109 @@ export class MapView {
     return out;
   }
 
+  // ---------- Sichtbarkeit ----------
+  visible(pid) { return !this.game?.visible || this.game.visible(pid); }
+
+  regionAt(wx, wy) {
+    const { gw, gh, regions } = this.map;
+    const cx = Math.max(0, Math.min(gw - 1, Math.floor(wx / CELL))), cy = Math.max(0, Math.min(gh - 1, Math.floor(wy / CELL)));
+    return REGION_IDS[regions[cy * gw + cx]] || 'orient';
+  }
+
+  regionKnown(wx, wy) {
+    if (!this.known) return true;
+    return this.known.has(this.regionAt(wx, wy));
+  }
+
+  // Terra incognita: Nebel über unbekannten Weltgegenden
+  buildFog(known) {
+    const { gw, gh, regions } = this.map;
+    const S = 4;
+    const fw = Math.ceil(gw / S), fh = Math.ceil(gh / S);
+    const unknown = REGION_IDS.map((r) => !known.has(r));
+    if (!unknown.some(Boolean)) { this.fog = null; return; }
+    const mask = document.createElement('canvas');
+    mask.width = fw; mask.height = fh;
+    const mctx = mask.getContext('2d');
+    const img = mctx.createImageData(fw, fh);
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      const cx = Math.min(gw - 1, x * S + 2), cy = Math.min(gh - 1, y * S + 2);
+      if (unknown[regions[cy * gw + cx]]) img.data[(y * fw + x) * 4 + 3] = 255;
+    }
+    mctx.putImageData(img, 0, 0);
+    const FW = Math.round(WORLD_W / 2), FH = Math.round(WORLD_H / 2);
+    const fog = document.createElement('canvas');
+    fog.width = FW; fog.height = FH;
+    const ctx = fog.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    try { ctx.filter = 'blur(4px)'; } catch (e) { /* ältere Browser */ }
+    ctx.drawImage(mask, 0, 0, FW, FH);
+    ctx.filter = 'none';
+    // Pergamentfarbe in die Maske
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#e6d7ae';
+    ctx.fillRect(0, 0, FW, FH);
+    // Schraffur und Flecken nur innerhalb des Nebels
+    ctx.globalCompositeOperation = 'source-atop';
+    const rnd = mulberry32(4242);
+    for (let i = 0; i < 60; i++) {
+      const x = rnd() * FW, y = rnd() * FH, r = 30 + rnd() * 120;
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(140,105,60,${0.05 + rnd() * 0.06})`);
+      gr.addColorStop(1, 'rgba(140,105,60,0)');
+      ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    ctx.strokeStyle = 'rgba(110,80,45,0.10)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (let x = -FH; x < FW; x += 9) { ctx.moveTo(x, FH); ctx.lineTo(x + FH, 0); }
+    ctx.stroke();
+    // dunkler Saum am Rand der bekannten Welt
+    ctx.globalCompositeOperation = 'source-over';
+    const edge = document.createElement('canvas');
+    edge.width = FW; edge.height = FH;
+    const ectx = edge.getContext('2d');
+    try { ectx.filter = 'blur(10px)'; } catch (e) { /* ältere Browser */ }
+    ectx.drawImage(mask, 0, 0, FW, FH);
+    ectx.filter = 'none';
+    ectx.globalCompositeOperation = 'source-in';
+    ectx.fillStyle = 'rgba(90,60,30,0.35)';
+    ectx.fillRect(0, 0, FW, FH);
+    ectx.globalCompositeOperation = 'destination-out';
+    ectx.drawImage(fog, 0, 0);
+    ctx.drawImage(edge, 0, 0);
+    this.fog = fog;
+    this.fogLabels = REGION_IDS.filter((r, i) => unknown[i]).map((r) => ({ r, xy: project(...REGIONS[r].anchor) }));
+  }
+
+  drawFogLabels(ctx) {
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const l of this.fogLabels || []) {
+      const [x, y] = l.xy;
+      ctx.font = 'italic 600 64px "Cinzel", Georgia, serif';
+      ctx.fillStyle = 'rgba(95,65,35,0.55)';
+      ctx.fillText(spaced(t('reg.incognita').toUpperCase()), x, y);
+      ctx.font = 'italic 34px "EB Garamond", Georgia, serif';
+      ctx.fillStyle = 'rgba(95,65,35,0.65)';
+      ctx.fillText(L(REGIONS[l.r].fog), x, y + 58);
+      this.drawCompass(ctx, x, y - 130, 44);
+    }
+    ctx.restore();
+  }
+
   // ---------- Politische Ebene ----------
   rebuildOverlay(force = false) {
     if (!this.game) return;
     const g = this.game;
+    const known = new Set(g.knownRegions ? g.knownRegions() : REGION_IDS);
+    const knownSig = [...known].sort().join(',');
     const cols = PROVINCES.map((p) => g.provColor(p.id, this.mode));
-    // Nur neu zeichnen, wenn sich Farben oder Besitzverhältnisse geändert haben
-    const sig = this.mode + '|' + PROVINCES.map((p, i) => g.owner(p.id) + (cols[i] ? cols[i].join(',') : '')).join(';');
+    // Nur neu zeichnen, wenn sich Farben, Besitzverhältnisse oder die bekannte Welt geändert haben
+    const sig = this.mode + '|' + knownSig + '|' + PROVINCES.map((p, i) => g.owner(p.id) + (cols[i] ? cols[i].join(',') : '')).join(';');
     if (!force && sig === this.overlaySig) return;
     this.overlaySig = sig;
+    if (knownSig !== this.fogSig || force) { this.fogSig = knownSig; this.known = known.size >= REGION_IDS.length ? null : known; this.buildFog(known); }
     const { gw, gh, ids, nP } = this.map;
     const small = document.createElement('canvas');
     small.width = gw; small.height = gh;
@@ -368,6 +464,14 @@ export class MapView {
     const cctx = this.composite.getContext('2d');
     cctx.drawImage(this.base, 0, 0);
     cctx.drawImage(this.overlay, 0, 0);
+    if (this.fog) {
+      cctx.imageSmoothingEnabled = true;
+      // leicht durchscheinend: wie auf alten Karten ahnt man die Umrisse der fernen Länder
+      cctx.globalAlpha = 0.9;
+      cctx.drawImage(this.fog, 0, 0, WORLD_W, WORLD_H);
+      cctx.globalAlpha = 1;
+      this.drawFogLabels(cctx);
+    }
     this.invalidate();
   }
 
@@ -375,7 +479,7 @@ export class MapView {
     const groups = {};
     this.map.provinces.forEach((p, i) => {
       const o = provOwner[i];
-      if (!o || o === 'rebels') return;
+      if (!o || o === 'rebels' || !this.visible(p.id)) return;
       (groups[o] = groups[o] || []).push(p);
     });
     this.facLabels = [];
@@ -445,6 +549,7 @@ export class MapView {
     for (const w of WATER) {
       if (!w.name || !w.label) continue;
       const [x, y] = project(...w.label);
+      if (!this.regionKnown(x, y)) continue;
       ctx.font = `italic ${Math.max(14, 13 / z)}px "EB Garamond", Georgia, serif`;
       ctx.fillStyle = 'rgba(40,70,80,0.75)';
       ctx.fillText(spaced(L(w.name)), x, y);
@@ -453,6 +558,7 @@ export class MapView {
       for (const w of WASTELANDS) {
         if (!w.n) continue;
         const [x, y] = project(w.lon, w.lat);
+        if (!this.regionKnown(x, y)) continue;
         ctx.font = `italic ${11 / z}px "EB Garamond", Georgia, serif`;
         ctx.fillStyle = 'rgba(90,65,35,0.7)';
         ctx.fillText(L(w.n), x, y);
@@ -468,7 +574,13 @@ export class MapView {
     for (const r of TRADE_ROUTES) {
       ctx.strokeStyle = r.id.startsWith('silk') ? 'rgba(160,40,30,0.85)' : 'rgba(110,70,20,0.75)';
       ctx.beginPath();
-      r.path.forEach((pid, i) => { const p = this.map.provIndex[pid]; if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+      let prev = null;
+      for (const pid of r.path) {
+        const p = this.map.provIndex[pid];
+        const vis = this.visible(pid);
+        if (vis && prev) ctx.lineTo(p.x, p.y); else if (vis) ctx.moveTo(p.x, p.y);
+        prev = vis ? p : null;
+      }
       ctx.stroke();
     }
     ctx.restore();
@@ -495,6 +607,7 @@ export class MapView {
         ctx.save();
         for (const r of REGION_LABELS) {
           const [x, y] = project(r.lon, r.lat);
+          if (!this.regionKnown(x, y)) continue;
           ctx.save();
           ctx.translate(x, y); ctx.rotate((r.rot * Math.PI) / 180);
           ctx.font = `italic 600 ${r.size}px "Cinzel", Georgia, serif`;
@@ -507,6 +620,7 @@ export class MapView {
       const fs = 11.5 / z;
       ctx.font = `600 ${fs}px "Cinzel", Georgia, serif`;
       for (const p of this.map.provinces) {
+        if (!this.visible(p.id)) continue;
         const name = L(PROVINCES[p.index].n);
         ctx.lineWidth = fs / 4; ctx.strokeStyle = 'rgba(245,235,205,0.8)';
         ctx.strokeText(name, p.lx, p.ly + 16 / z);
@@ -522,6 +636,7 @@ export class MapView {
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (const p of this.map.provinces) {
+      if (!this.visible(p.id)) continue;
       const info = g.cityInfo(p.id);
       const col = info.color;
       const r = (4 + Math.min(5, info.pop / 70)) * Math.max(0.6, Math.min(1.3, z * 1.2)) * s;
@@ -595,7 +710,7 @@ export class MapView {
     const g = this.game;
     const out = [];
     const byProv = {};
-    for (const a of g.armies()) (byProv[a.prov] = byProv[a.prov] || []).push(a);
+    for (const a of g.armies()) if (this.visible(a.prov)) (byProv[a.prov] = byProv[a.prov] || []).push(a);
     const s = 1 / this.cam.z;
     for (const [pid, list] of Object.entries(byProv)) {
       const p = this.map.provIndex[pid];
@@ -693,6 +808,7 @@ export class MapView {
     for (const a of g.armies()) {
       const tr = a.trail;
       if (!tr || a.fac === g.player || tr.turn !== g.turn - 1 || tr.provs.length < 2) continue;
+      if (!tr.provs.every((pid) => this.visible(pid))) continue;
       const hostile = g.hostile(a.fac);
       if (!hostile && this.cam.z < 0.8) continue;
       ctx.save();
@@ -728,7 +844,7 @@ export class MapView {
     const cx = Math.floor(wx / CELL), cy = Math.floor(wy / CELL);
     if (cx < 0 || cy < 0 || cx >= gw || cy >= gh) return null;
     const id = ids[cy * gw + cx];
-    if (id >= 0 && id < nP) return PROVINCES[id].id;
+    if (id >= 0 && id < nP && this.visible(PROVINCES[id].id)) return PROVINCES[id].id;
     return null;
   }
 
@@ -745,7 +861,7 @@ export class MapView {
 
   clampCam() {
     const minZ = Math.min(this.vw / WORLD_W, this.vh / WORLD_H) * 0.95;
-    this.cam.z = Math.max(minZ, Math.min(3, this.cam.z));
+    this.cam.z = Math.max(minZ, Math.min(4, this.cam.z));
     const vwW = this.vw / this.cam.z, vhW = this.vh / this.cam.z;
     const mx = Math.max(0, WORLD_W - vwW), my = Math.max(0, WORLD_H - vhW);
     this.cam.x = WORLD_W < vwW ? (WORLD_W - vwW) / 2 : Math.max(0, Math.min(mx, this.cam.x));

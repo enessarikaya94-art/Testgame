@@ -37,7 +37,14 @@ export class RNG {
 
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const round1 = (v) => Math.round(v * 10) / 10;
-export const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+const PK = new Map();
+export function pairKey(a, b) {
+  let m = PK.get(a);
+  if (!m) { m = new Map(); PK.set(a, m); }
+  let k = m.get(b);
+  if (k === undefined) { k = a < b ? `${a}|${b}` : `${b}|${a}`; m.set(b, k); }
+  return k;
+}
 
 export function fmt(n) {
   if (Math.abs(n) >= 10000) return Math.round(n / 1000) + 'k';

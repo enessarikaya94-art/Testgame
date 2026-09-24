@@ -12,6 +12,7 @@ import { FACTIONS, TITLES } from '../data/factions.js';
 import { RELIGIONS, CULTURES, TERRAINS } from '../data/world.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { clamp } from '../util.js';
+import { knows, knownRegions } from './discovery.js';
 
 export async function aiTurn(fid) {
   const f = fac(fid);
@@ -19,7 +20,9 @@ export async function aiTurn(fid) {
   if (fid === 'rebels') { await rebelTurn(); return; }
   aiResearch(f);
   aiPolicies(f);
-  if ((G.s.turn + hash(fid)) % 2 === 0) aiDiplomacy(f);
+  // Stärkevergleiche der Diplomatie dürfen innerhalb eines Zuges zwischengespeichert werden
+  G.powerCache = new Map();
+  try { if ((G.s.turn + hash(fid)) % 2 === 0) aiDiplomacy(f); } finally { G.powerCache = null; }
   aiBuild(f);
   aiRecruit(f);
   await aiMilitary(f);
@@ -41,6 +44,8 @@ function aiResearch(f) {
     if (t === 'ghulam' && RELIGIONS[f.religion].group !== 'islam') w = 0.05;
     if (t === 'kurultai' && CULTURES[f.culture].group !== 'steppe') w *= 0.2;
     if (t === 'turan_tactics' && CULTURES[f.culture].group !== 'steppe') w *= 0.3;
+    if (d.reveal) w *= d.reveal === 'all' ? (knownRegions(f.id).length >= 4 ? 0.05 : 0.6) : knows(f.id, d.reveal) ? 0.03 : 0.5;
+    if (t === 'longbow' && !['anglo', 'gaelic'].includes(f.culture)) w *= 0.3;
     return w;
   });
   f.research.cur = pick;
@@ -243,10 +248,30 @@ function aiBuild(f) {
   }
 }
 
+// ---------- Entlassung bei leerer Kasse ----------
+function aiDisband(f) {
+  const net = f.last?.net ?? 0;
+  if (f.gold > 60 || net >= 0) return;
+  const all = [];
+  for (const a of factionArmies(f.id)) if (!prov(a.prov).siege) for (const u of a.units) all.push([a, u]);
+  if (all.length <= 3) return;
+  all.sort((x, y) => UNITS[y[1].t].upkeep - UNITS[x[1].t].upkeep);
+  let deficit = -net, removed = 0;
+  for (const [a, u] of all) {
+    if (removed >= 2 || deficit <= 0 || all.length - removed <= 3) break;
+    const i = a.units.indexOf(u);
+    if (i < 0) continue;
+    a.units.splice(i, 1);
+    deficit -= UNITS[u.t].upkeep * 2;
+    removed++;
+  }
+}
+
 // ---------- Rekrutierung ----------
 function aiRecruit(f) {
   const provs = factionProvinces(f.id);
   if (!provs.length) return;
+  aiDisband(f);
   const armies = factionArmies(f.id);
   const units = armies.reduce((s, a) => s + a.units.length, 0);
   const enemies = enemiesOf(f.id);

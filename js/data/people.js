@@ -77,6 +77,74 @@ export const NAMES = {
     m: [n('Georgios', 'Georgios'), n('Rafael'), n('Salomo', 'Süleyman'), n('Moses', 'Musa'), n('David', 'Davud'), n('Zacharias', 'Zekeriya')],
     f: [n('Martha', 'Marta'), n('Maria')],
   },
+  german: {
+    m: [n('Otto'), n('Heinrich'), n('Konrad'), n('Friedrich'), n('Lothar'), n('Ludwig'), n('Rudolf'), n('Welf'), n('Albrecht'), n('Bernhard'), n('Egbert'), n('Gottfried'), n('Hermann'), n('Philipp')],
+    f: [n('Mathilde'), n('Adelheid'), n('Gisela'), n('Kunigunde'), n('Agnes'), n('Richenza'), n('Beatrix')],
+  },
+  italian: {
+    m: [n('Pietro'), n('Enrico'), n('Domenico'), n('Vitale'), n('Ottone'), n('Guglielmo'), n('Ruggero'), n('Tancredi'), n('Bonifacio'), n('Guido'), n('Ranieri'), n('Sebastiano')],
+    f: [n('Matilde'), n('Beatrice'), n('Costanza'), n('Adelaide'), n('Giovanna')],
+  },
+  iberian: {
+    m: [n('Alfonso'), n('Sancho'), n('Fernando'), n('García'), n('Ramiro'), n('Ramón'), n('Pedro'), n('Jaime'), n('Rodrigo'), n('Bermudo'), n('Abd ar-Rahman', 'Abdurrahman'), n('Hischam', 'Hişam'), n('al-Mutamid', 'Mutemid'), n('Ibn Hud', 'İbn Hud')],
+    f: [n('Urraca'), n('Teresa'), n('Sancha'), n('Berenguela'), n('Leonor'), n('Subh', 'Subh')],
+  },
+  anglo: {
+    m: [n('Æthelred'), n('Edmund'), n('Edward'), n('Harold'), n('Wilhelm', 'William'), n('Heinrich', 'Henry'), n('Richard'), n('Johann', 'John'), n('Stephan', 'Stephen'), n('Godwin'), n('Robert')],
+    f: [n('Emma'), n('Edith'), n('Mathilde', 'Matilda'), n('Eleonore', 'Eleanor'), n('Adela')],
+  },
+  gaelic: {
+    m: [n('Brian'), n('Máel Sechnaill'), n('Malcolm'), n('Duncan'), n('Macbeth'), n('Donald'), n('Diarmait'), n('Ruaidrí'), n('Toirdelbach'), n('Alexander')],
+    f: [n('Gruoch'), n('Margaret'), n('Derbforgaill'), n('Gormflaith')],
+  },
+  norse: {
+    m: [n('Sven', 'Sven'), n('Knut', 'Knut'), n('Harald'), n('Olaf'), n('Magnus'), n('Erik'), n('Sigurd'), n('Håkon', 'Hakon'), n('Waldemar', 'Valdemar'), n('Ingvar'), n('Anund'), n('Sverre')],
+    f: [n('Ingrid'), n('Estrid'), n('Gunhild'), n('Astrid'), n('Sigrid')],
+  },
+  baltic: {
+    m: [n('Mindaugas'), n('Traidenis'), n('Skomantas'), n('Herkus'), n('Kaupo'), n('Vesthard'), n('Lamekins'), n('Glande')],
+    f: [n('Morta'), n('Aldona'), n('Rimgaile')],
+  },
+  magyar: {
+    m: [n('Géza'), n('István', 'İştvan'), n('Béla'), n('László'), n('Kálmán'), n('András'), n('Imre', 'İmre'), n('Salamon'), n('Álmos'), n('Koppány'), n('Gyula'), n('Ajtony')],
+    f: [n('Sarolt'), n('Gisela'), n('Adelheid'), n('Ilona'), n('Erzsébet')],
+  },
+  han: {
+    m: [n('Zhao Heng'), n('Zhao Zhen'), n('Zhao Xu'), n('Zhao Ji'), n('Zhao Gou'), n('Yue Fei'), n('Han Shizhong'), n('Fan Zhongyan'), n('Sima Guang'), n('Su Shi'), n('Bao Zheng'), n('Di Qing'), n('Ouyang Xiu'), n('Wen Tianxiang'), n('Zhu Xi')],
+    f: [n('Li Qingzhao'), n('Liu E'), n('Cao'), n('Meng'), n('Wu'), n('Liang Hongyu')],
+  },
+  jurchen: {
+    m: [n('Aguda'), n('Wuqimai'), n('Wanyan Zongbi'), n('Wanyan Zonghan'), n('Wanyan Liang'), n('Wanyan Yong'), n('Wanyan Jing'), n('Hela'), n('Wugunai'), n('Puxian Wannu')],
+    f: [n('Tangkuo'), n('Pucha'), n('Tudan')],
+  },
+  tangut: {
+    m: [n('Li Jiqian'), n('Li Deming'), n('Li Yuanhao'), n('Li Liangzuo'), n('Li Qianshun'), n('Li Renxiao'), n('Li Chunyou'), n('Li Anquan'), n('Weiming Shouming'), n('Yeli Yuqi')],
+    f: [n('Liang'), n('Moyi'), n('Yeli'), n('Weiming')],
+  },
+  tibetan: {
+    m: [n('Yeshe-Ö'), n('Jangchub-Ö'), n('Gusiluo'), n('Dongzhan'), n('Atisha'), n('Marpa'), n('Drogön'), n('Tsangpa'), n('Duan Siping'), n('Duan Zhixiang'), n('Gao Shengtai')],
+    f: [n('Dolma'), n('Pema'), n('Yangchen')],
+  },
+  korean: {
+    m: [n('Wang Song'), n('Wang Hyeon'), n('Wang Hwi'), n('Wang U'), n('Gang Gam-chan'), n('Seo Hui'), n('Yun Gwan'), n('Kim Bu-sik'), n('Choe Chung-heon'), n('Choe U')],
+    f: [n('Heonae'), n('Wonseong'), n('Inye')],
+  },
+  seasian: {
+    m: [n('Lý Công Uẩn', 'Ly Cong Uan'), n('Lý Thường Kiệt', 'Ly Thuong Kiet'), n('Trần Thái Tông', 'Tran Thai Tong'), n('Suryavarman'), n('Jayavarman'), n('Udayadityavarman'), n('Harivarman'), n('Anawrahta'), n('Kyansittha'), n('Narapatisithu'), n('Alaungsithu')],
+    f: [n('Ỷ Lan', 'Y Lan'), n('Indradevi'), n('Rajendradevi')],
+  },
+  berber: {
+    m: [n('Yusuf ibn Taschfin', 'Yusuf bin Taşfin'), n('Ali ibn Yusuf', 'Ali bin Yusuf'), n('Abu Bakr', 'Ebubekir'), n('Abd al-Mumin', 'Abdülmü\'min'), n('Yaqub al-Mansur', 'Yakub el-Mansur'), n('Ibn Tumart', 'İbn Tumert'), n('al-Muizz', 'Muiz'), n('Buluggin', 'Bülükkin'), n('Hammad'), n('Tamim'), n('Ziri'), n('Badis')],
+    f: [n('Zainab an-Nafzawiyya', 'Zeyneb en-Nefzaviyye'), n('Fatima', 'Fatma'), n('Tamima')],
+  },
+  sudanic: {
+    m: [n('Sundiata'), n('Sumanguru'), n('Mansa Wali'), n('Kankan'), n('Tunka Manin'), n('Dia Kossoi'), n('Hume'), n('Dunama'), n('Bagauda'), n('Oranmiyan'), n('Obalufon'), n('Abubakari')],
+    f: [n('Sogolon'), n('Kassi'), n('Nana'), n('Luwo')],
+  },
+  ethiopian: {
+    m: [n('Lalibela'), n('Yemrehanna Krestos'), n('Na\'akueto La\'ab'), n('Tatadim'), n('Yetbarak'), n('Mara Takla Haymanot'), n('Degna Jan'), n('Wedem Asfare'), n('Umar Walashma'), n('Ali')],
+    f: [n('Gudit'), n('Masqal Kibra'), n('Mesqel')],
+  },
 };
 
 // Eigenschaften: Modifikatoren auf Werte

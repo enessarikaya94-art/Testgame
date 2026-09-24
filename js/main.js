@@ -14,6 +14,7 @@ import { helpScreen } from './ui/screens.js';
 import { slotMeta, loadSlotData, applyState, SLOTS, importSave } from './ui/saves.js';
 import { esc } from './util.js';
 import { PROVINCE_BY_ID } from './data/provinces.js';
+import { REGIONS, REGION_IDS, PROV_REGION } from './data/regions.js';
 
 let map = null, view = null;
 let gameUIReady = false;
@@ -24,10 +25,11 @@ async function boot() {
   await new Promise((r) => setTimeout(r, 30));
   map = generateMap();
   view = new MapView($('#map'), map);
+  window.__view = view;
   await document.fonts?.ready;
   view.invalidate();
   $('#loading').style.display = 'none';
-  onLangChange(() => { document.documentElement.lang = lang(); if (currentScreen === 'menu') showMenu(); if (currentScreen === 'setup') renderSetup(); view.invalidate(); });
+  onLangChange(() => { document.documentElement.lang = lang(); if (currentScreen === 'menu') showMenu(); if (currentScreen === 'setup') renderSetup(); if (view.game) view.rebuildOverlay(true); view.invalidate(); });
   const params = new URLSearchParams(location.search);
   if (params.has('sim')) { runSimulation(params); return; }
   showMenu();
@@ -126,6 +128,7 @@ function renderSetup() {
   const turkic = (f) => FACTIONS[f].turkic;
   const sortF = (a, b) => (turkic(b) - turkic(a)) || (sc.owners[b].length - sc.owners[a].length);
   majors.sort(sortF); minors.sort(sortF);
+  const regionOfFac = (f) => PROV_REGION[G.s.factions[f].capital] || 'orient';
   const fd = FACTIONS[setup.faction];
   const fs = G.s.factions[setup.faction];
   const item = (f) => `<button class="fitem ${f === setup.faction ? 'on' : ''}" data-act="fac" data-f="${f}"><span class="swatch" style="background:${FACTIONS[f].color}"></span><span>${esc(L(FACTIONS[f].n))}</span>${turkic(f) ? '<span class="tk" title="Türk">☾</span>' : ''}<small>${sc.owners[f].length}</small></button>`;
@@ -138,8 +141,9 @@ function renderSetup() {
     <div class="scenarios">${Object.entries(SCENARIOS).map(([id, s]) => `<button class="scen ${id === setup.scenario ? 'on' : ''}" data-act="scen" data-s="${id}"><b>${esc(L(s.n))}</b></button>`).join('')}</div>
     <p class="scen-desc">${esc(L(sc.desc))}</p>
     <h2>${esc(t('setup.faction'))}</h2>
-    <div class="flist">${majors.map(item).join('')}</div>
+    ${REGION_IDS.map((r) => { const list = majors.filter((f) => regionOfFac(f) === r); return list.length ? `<h4 class="regionhead">${esc(L(REGIONS[r].n))}</h4><div class="flist">${list.map(item).join('')}</div>` : ''; }).join('')}
     <p class="muted small">${esc(t('setup.npcNote', { n: minors.length }))}</p>
+    <p class="muted small">🌫 ${esc(t('setup.farNote'))}</p>
   </div>
   <div class="setup-detail">
     <h2><span class="swatch" style="background:${fd.color}"></span>${esc(L(fd.n))}</h2>
@@ -220,6 +224,8 @@ async function startGame() {
 }
 
 function loadGame(state) {
+  // Spielstände aus der Zeit vor der großen Weltkarte passen nicht mehr
+  if (!state || (state.v || 1) < 2 || Object.keys(PROVINCE_BY_ID).some((pid) => !state.provinces?.[pid])) { toast(t('menu.oldSave')); return; }
   applyState(state, map);
   refreshCaches();
   ensureGameUI();

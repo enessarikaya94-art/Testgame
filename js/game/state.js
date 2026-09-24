@@ -42,16 +42,37 @@ export function factionProvinces(fid) {
 }
 
 export function factionArmies(fid) {
+  if (G.armyIdx) return G.armyIdx.byFac.get(fid) || [];
   return Object.values(G.s.armies).filter((a) => a.fac === fid);
 }
 
+// Für Abschnitte, in denen sich Heere weder bewegen noch entstehen (z. B. die Wirtschaftsphase)
+export function withArmyIndex(fn) {
+  const byFac = new Map(), byProv = new Map();
+  for (const a of Object.values(G.s.armies)) {
+    let l = byFac.get(a.fac); if (!l) byFac.set(a.fac, (l = [])); l.push(a);
+    let m = byProv.get(a.prov); if (!m) byProv.set(a.prov, (m = [])); m.push(a);
+  }
+  G.armyIdx = { byFac, byProv };
+  try { return fn(); } finally { G.armyIdx = null; }
+}
+
 export function armiesIn(pid) {
+  if (G.armyIdx) return G.armyIdx.byProv.get(pid) || [];
   return Object.values(G.s.armies).filter((a) => a.prov === pid);
 }
 
+// Liste der lebenden Mächte; wird neu erstellt, sobald sich die Menge ändert (Versionszähler)
+let aliveCache = { s: null, v: -1, n: 0, list: [] };
 export function aliveFactions() {
-  return Object.values(G.s.factions).filter((f) => f.alive);
+  const s = G.s;
+  const n = Object.keys(s.factions).length;
+  if (aliveCache.s !== s || aliveCache.v !== (s.aliveVer || 0) || aliveCache.n !== n) {
+    aliveCache = { s, v: s.aliveVer || 0, n, list: Object.values(s.factions).filter((f) => f.alive) };
+  }
+  return aliveCache.list;
 }
+export function bumpAlive() { G.s.aliveVer = (G.s.aliveVer || 0) + 1; }
 
 export function facName(fid) {
   const f = G.s.factions[fid];
@@ -157,7 +178,7 @@ export const ROUTES_BY_PROV = (() => {
 // ---------- Protokoll ----------
 export function log(k, p = {}, opts = {}) {
   const s = G.s;
-  s.log.push({ t: s.turn, y: s.year, se: s.season, k, p, f: opts.f || null, imp: !!opts.imp });
+  s.log.push({ t: s.turn, y: s.year, se: s.season, k, p, f: opts.f || null, imp: !!opts.imp, rg: opts.rg || null });
   if (s.log.length > 400) s.log.splice(0, s.log.length - 400);
 }
 
@@ -165,7 +186,7 @@ export function log(k, p = {}, opts = {}) {
 export function createGame(scenarioId, playerFid, seed = Date.now() % 1e9, mapData) {
   const sc = SCENARIOS[scenarioId];
   const s = {
-    v: 1, scenario: scenarioId, year: sc.year, season: 0, turn: 1, player: playerFid,
+    v: 2, scenario: scenarioId, year: sc.year, season: 0, turn: 1, player: playerFid,
     rngState: seed, nextId: 1, factions: {}, provinces: {}, armies: {}, chars: {}, rel: {}, log: [],
     flags: {}, pending: [], gameOver: null, eventRate: 1, startYear: sc.year, observer: playerFid === null,
   };
@@ -303,8 +324,8 @@ export function relocateCapital(fid) {
 export function bfsDistances(start, passable = () => true) {
   const dist = { [start]: 0 };
   const q = [start];
-  while (q.length) {
-    const c = q.shift();
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h];
     for (const n of neighbors(c)) {
       if (dist[n] !== undefined || !passable(n)) continue;
       dist[n] = dist[c] + 1;
@@ -312,6 +333,14 @@ export function bfsDistances(start, passable = () => true) {
     }
   }
   return dist;
+}
+
+// Reine Entfernung im Provinznetz (unabhängig von Besitz) – ändert sich nie
+const STATIC_DIST = new Map();
+export function staticDistances(start) {
+  let d = STATIC_DIST.get(start);
+  if (!d) { d = bfsDistances(start); STATIC_DIST.set(start, d); }
+  return d;
 }
 
 export function buildingsList() { return Object.keys(BUILDINGS); }

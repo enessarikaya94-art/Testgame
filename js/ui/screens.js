@@ -21,6 +21,8 @@ import { RESOURCES, resourceAccess, paymentBetween, setPayment, takeLoan, LOAN, 
 import { GOODS } from '../data/world.js';
 import { opinionParts } from '../game/state.js';
 import { SLOTS, saveSlot, slotMeta, exportSave, importSave, loadSlotData } from './saves.js';
+import { knowsFaction, knows, knownRegions, regionOf } from '../game/discovery.js';
+import { REGIONS, REGION_IDS } from '../data/regions.js';
 
 // ---------- Allgemein ----------
 export function confirmDialog(text, yes, no) {
@@ -125,6 +127,23 @@ export async function pendingDialog(item) {
     clearModCache();
     return;
   }
+  if (item.type === 'discovery') {
+    const reg = REGIONS[item.region];
+    if (!reg) return;
+    const causeText = t('disc.' + (item.cause || 'event'), { via: item.via ? facName(item.via) : '' });
+    const powers = aliveFactions().filter((f) => f.id !== 'rebels' && f.capital && regionOf(f.capital) === item.region)
+      .sort((a, b) => factionProvinces(b.id).length - factionProvinces(a.id).length);
+    const shown = powers.slice(0, 10);
+    const html = `<div class="event discovery"><h2>🧭 ${esc(t('disc.title'))}: ${esc(L(reg.n))}</h2>
+      <p class="evtext">${esc(t('disc.text', { region: reg.n, causeText }))}</p>
+      <p class="muted">${esc(L(reg.desc))}</p>
+      ${shown.length ? `<h3>${esc(t('disc.new'))}</h3><div class="disc-powers">${shown.map((f) => `<span class="dp">${swatch(f.color)}${esc(L(f.n))} <small>${factionProvinces(f.id).length}</small></span>`).join('')}${powers.length > shown.length ? `<span class="dp muted">+${powers.length - shown.length}</span>` : ''}</div>` : ''}
+      <div class="actions center"><button data-act="show">🗺 ${esc(t('disc.show'))}</button><button class="primary" data-act="ok">${esc(t('ui.ok'))}</button></div></div>`;
+    const v = await openModal(html, { closable: false, handlers: (close) => ({ ok: () => close('ok'), show: () => close('show') }) });
+    refreshAll();
+    if (v === 'show' && shown[0] && UIState.map) UIState.map.centerOn(shown[0].capital, 0.45);
+    return;
+  }
   if (item.type === 'callToArms') {
     const ok = await confirmDialog(t('cta.text', { ally: L(facName(item.from)), enemy: L(facName(item.enemy)) }), t('cta.join'), t('cta.refuse'));
     acceptCallToArms(s.player, item.from, item.enemy, ok);
@@ -197,7 +216,7 @@ export function factionScreen() {
     for (const tid of Object.keys(TITLES)) {
       if (tid === 'caliph' || f.titles.includes(tid)) continue;
       const c = titleClaimable(f.id, tid);
-      if (c.reason === 't.turkic' || c.reason === 't.persian' || c.reason === 't.orthodox' || c.reason === 't.sunni' || c.reason === 't.isCaliph') continue;
+      if (c.reason === 't.turkic' || c.reason === 't.persian' || c.reason === 't.orthodox' || c.reason === 't.catholic' || c.reason === 't.sinic' || c.reason === 't.sunni' || c.reason === 't.isCaliph') continue;
       let why = '';
       if (!c.ok) why = c.reason === 't.needs' ? t('t.needs', { list: c.missing.map((p) => L(provName(p))).join(', ') }) : t(c.reason, { n: c.need });
       decisions.push(dec('title:' + tid, t('dec.title', { title: L(TITLES[tid].n) }), L(TITLES[tid].desc), c.ok, why));
@@ -262,6 +281,9 @@ export function factionScreen() {
         </table>
       </div>
       <div>
+        <h3>🧭 ${esc(t('reg.known'))}</h3>
+        <div class="regions">${REGION_IDS.map((r) => `<span class="reg ${knows(f.id, r) ? 'known' : 'unknown'}" title="${esc(L(REGIONS[r].desc))}">${knows(f.id, r) ? '🗺' : '🌫'} ${esc(L(REGIONS[r].n))} <small>${esc(t(knows(f.id, r) ? 'reg.isKnown' : 'reg.isUnknown'))}</small></span>`).join('')}</div>
+        ${knownRegions(f.id).length < REGION_IDS.length ? `<p class="muted small">${esc(t('reg.unknownHint'))}</p>` : ''}
         <h3>${esc(t('fac.economy'))}</h3>
         <div class="small"><b>${esc(t('dip.resources'))}:</b> ${resList(G.s.player)}</div>
         <div class="small"><b>${esc(t('mk.monopolies'))}:</b> ${monopolies(G.s.player).map((g) => `${GOODS[g].icon} ${esc(L(GOODS[g].n))}`).join(', ') || '—'}</div>
@@ -330,13 +352,24 @@ function goalsList(goals) {
   }).join('')}</ul>`;
 }
 
+// Meldungen aus unerforschten Ländern bleiben verborgen
+export function logVisible(e) {
+  const s = G.s;
+  if (s.observer || e.f === s.player) return true;
+  if (e.rg && !knows(s.player, e.rg)) return false;
+  if (e.f && fac(e.f) && !knowsFaction(s.player, e.f)) return false;
+  return true;
+}
+
 // ---------- Diplomatie ----------
 export function diplomacyScreen(initial) {
   let selected = initial && initial !== G.s.player ? initial : null;
   const render = () => {
     const s = G.s, me = s.player;
     const nbs = new Set(neighborsOf(me));
-    const list = aliveFactions().filter((f) => f.id !== me && f.id !== 'rebels' && (factionProvinces(f.id).length || factionArmies(f.id).length));
+    const all = aliveFactions().filter((f) => f.id !== me && f.id !== 'rebels' && (factionProvinces(f.id).length || factionArmies(f.id).length));
+    const list = all.filter((f) => f.id === selected || knowsFaction(me, f.id));
+    const hidden = all.length - list.length;
     const prio = (f) => (atWar(me, f.id) ? 0 : f.overlord === me || fac(me).overlord === f.id ? 1 : relPeek(me, f.id)?.alliance ? 2 : nbs.has(f.id) ? 3 : 4);
     list.sort((a, b) => prio(a) - prio(b) || factionProvinces(b.id).length - factionProvinces(a.id).length);
     if (!selected && list.length) selected = list[0].id;
@@ -352,7 +385,7 @@ export function diplomacyScreen(initial) {
       if (truceLeft(me, fid) > 0 && !atWar(me, fid)) out.push(`<span class="tag truce">${esc(t('dip.truce'))} ${truceLeft(me, fid)}</span>`);
       return out.join('');
     };
-    const left = list.map((f) => `<button class="dlist ${f.id === selected ? 'on' : ''}" data-act="sel" data-f="${f.id}">${swatch(f.color)}<span>${esc(L(f.n))}</span><small class="${opinion(me, f.id) >= 0 ? 'pos' : 'neg'}">${signed(opinion(me, f.id))}</small>${status(f.id)}</button>`).join('');
+    const left = (hidden ? `<p class="muted small">🌫 ${esc(t('dip.unknownCount', { n: hidden }))}</p>` : '') + list.map((f) => `<button class="dlist ${f.id === selected ? 'on' : ''}" data-act="sel" data-f="${f.id}">${swatch(f.color)}<span>${esc(L(f.n))}</span><small class="${opinion(me, f.id) >= 0 ? 'pos' : 'neg'}">${signed(opinion(me, f.id))}</small>${status(f.id)}</button>`).join('');
     let right = '';
     if (selected && fac(selected)) {
       const f = fac(selected);
@@ -534,6 +567,8 @@ export function researchScreen() {
         html += `<button class="tech ${done ? 'done' : avail ? 'avail' : 'locked'} ${isCur ? 'cur' : ''}" data-act="pick" data-id="${id}" ${avail && !done ? '' : 'disabled'}>
           <b>${done ? '✓ ' : ''}${esc(L(x.n))}</b>
           <small>${esc(L(x.desc))}</small>
+          ${x.reveal ? `<small class="reveal ${x.reveal !== 'all' && knows(f.id, x.reveal) ? 'muted' : ''}">🧭 ${esc(x.reveal === 'all' ? t('tech.revealsAll') : t('tech.reveals', { region: REGIONS[x.reveal].n }))}${x.reveal !== 'all' && knows(f.id, x.reveal) ? ' ✓' : ''}</small>` : ''}
+          ${x.reqRegion ? `<small class="${knows(f.id, x.reqRegion) ? 'muted' : 'neg'}">🌐 ${esc(t('tech.needsRegion', { region: REGIONS[x.reqRegion].n }))}</small>` : ''}
           <small class="muted">${reqs ? esc(t('rs.requires')) + ': ' + esc(reqs) + ' · ' : ''}${x.minYear ? esc(t('rs.fromYear', { y: x.minYear })) + ' · ' : ''}${done ? '' : `📜${cost} (~${turns} ${esc(t('rs.turns'))})`}</small>
         </button>`;
       }
@@ -586,7 +621,7 @@ export function chronicleScreen() {
   let onlyImp = false;
   const render = () => {
     const s = G.s;
-    const list = s.log.slice().reverse().filter((e) => !onlyImp || e.imp || e.f === s.player).slice(0, 250);
+    const list = s.log.slice().reverse().filter((e) => (!onlyImp || e.imp || e.f === s.player) && logVisible(e)).slice(0, 250);
     return `<h2>📖 ${esc(t('ui.chronicle'))}</h2>
       <div class="policy center"><button data-act="f" class="${onlyImp ? '' : 'on'}">${esc(t('chr.all'))}</button><button data-act="f" class="${onlyImp ? 'on' : ''}">${esc(t('chr.important'))}</button></div>
       <div class="report">${list.map((e) => `<p class="${e.imp ? 'imp' : ''}"><small class="muted">${esc(dateText(e))}</small> ${esc(formatLog(e))}</p>`).join('')}</div>`;
@@ -595,9 +630,13 @@ export function chronicleScreen() {
 }
 
 function rankingTable() {
+  // Mächte in unerforschten Ländern bleiben namenlos
   const r = ranking().slice(0, 20);
+  const known = (id) => G.s.observer || knowsFaction(G.s.player, id);
   return `<table class="rank"><tr><th>#</th><th>${esc(t('rk.faction'))}</th><th>${esc(t('dip.provinces'))}</th><th>${esc(t('rk.score'))}</th></tr>
-    ${r.map((x, i) => `<tr class="${x.id === G.s.player ? 'me' : ''}"><td>${i + 1}</td><td>${swatch(fac(x.id).color)}${esc(L(fac(x.id).n))}</td><td>${x.provs}</td><td>${x.score}</td></tr>`).join('')}</table>`;
+    ${r.map((x, i) => known(x.id)
+    ? `<tr class="${x.id === G.s.player ? 'me' : ''}"><td>${i + 1}</td><td>${swatch(fac(x.id).color)}${esc(L(fac(x.id).n))}</td><td>${x.provs}</td><td>${x.score}</td></tr>`
+    : `<tr class="unknown"><td>${i + 1}</td><td>🌫 <i>${esc(t('reg.incognita'))}</i></td><td>?</td><td>${x.score}</td></tr>`).join('')}</table>`;
 }
 
 export function rankingScreen() {

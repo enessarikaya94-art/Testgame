@@ -313,3 +313,16 @@ table.rank tr.me { background: rgba(201, 162, 39, 0.2); font-weight: 600; }
 .res-own { color: var(--green); }
 .res-trade { color: var(--blue); }
 .res-none { color: #a02c20; }
+
+/* Weltgegenden und Entdeckungen */
+.regionhead { margin: 10px 0 4px; font-family: 'Cinzel', Georgia, serif; font-size: 13px; letter-spacing: 1px; color: #6b4a22; border-bottom: 1px solid rgba(107, 74, 34, 0.35); }
+.regions { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.regions .reg { padding: 3px 8px; border-radius: 10px; font-size: 13px; border: 1px solid rgba(90, 65, 35, 0.35); }
+.regions .reg.known { background: rgba(120, 150, 90, 0.18); }
+.regions .reg.unknown { background: rgba(90, 65, 35, 0.1); color: #7a6650; font-style: italic; }
+.regions .reg small { opacity: 0.7; }
+.discovery h3 { margin-top: 10px; }
+.disc-powers { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.disc-powers .dp { padding: 2px 8px; border-radius: 8px; background: rgba(255, 248, 225, 0.6); border: 1px solid rgba(90, 65, 35, 0.25); font-size: 13px; }
+table.rank tr.unknown td { color: #7a6650; }
+.tech small.reveal { color: #1f5f7a; }

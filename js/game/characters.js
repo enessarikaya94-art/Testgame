@@ -133,9 +133,24 @@ function deathChance(c) {
 }
 
 // Jede Runde (Jahreszeit)
+let charIdx = { turn: -1, s: null, map: null };
+function livingByFaction() {
+  if (charIdx.turn !== G.s.turn || charIdx.s !== G.s) {
+    const map = new Map();
+    for (const c of Object.values(G.s.chars)) {
+      if (!c.alive) continue;
+      let l = map.get(c.fac);
+      if (!l) { l = []; map.set(c.fac, l); }
+      l.push(c);
+    }
+    charIdx = { turn: G.s.turn, s: G.s, map };
+  }
+  return charIdx.map;
+}
+
 export function processCharacters(fid) {
   const f = fac(fid);
-  const members = Object.values(G.s.chars).filter((c) => c.alive && c.fac === fid);
+  const members = (livingByFaction().get(fid) || []).filter((c) => c.alive && c.fac === fid);
   for (const c of members) {
     c.loyMod = (c.loyMod || 0) * 0.98;
     if (rng().chance(deathChance(c) / 4)) killChar(c, 'natural');

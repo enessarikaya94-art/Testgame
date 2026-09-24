@@ -249,3 +249,192 @@ export const SCENARIOS = {
     },
   },
 };
+
+// ---------- Europa, Ferner Osten und Afrika ----------
+// Ergänzt die Szenarien um die Reiche jenseits des Orients.
+function extend(sc, add) {
+  for (const [fid, list] of Object.entries(add.owners || {})) sc.owners[fid] = [...(sc.owners[fid] || []), ...list];
+  sc.capitals = { ...(sc.capitals || {}), ...(add.capitals || {}) };
+  sc.govs = { ...(sc.govs || {}), ...(add.govs || {}) };
+  sc.titles = { ...(sc.titles || {}), ...(add.titles || {}) };
+  sc.gold = { ...(sc.gold || {}), ...(add.gold || {}) };
+  sc.rulers = { ...(sc.rulers || {}), ...(add.rulers || {}) };
+  sc.techs = { ...(sc.techs || {}) };
+  for (const [fid, list] of Object.entries(add.techs || {})) sc.techs[fid] = [...(sc.techs[fid] || []), ...list];
+  sc.vassals = [...(sc.vassals || []), ...(add.vassals || [])];
+  sc.wars = [...(sc.wars || []), ...(add.wars || [])];
+  sc.alliances = [...(sc.alliances || []), ...(add.alliances || [])];
+}
+
+const WEST_ASIA_1000 = {
+  owners: {
+    rus: ['chernigov', 'smolensk', 'novgorod', 'galich', 'vladimir', 'ryazan'],
+    pecheneg: ['wallachia'],
+    byzantine: ['hellas', 'morea', 'crete', 'apulia'],
+    bulgarian: ['epirus'],
+    pala: ['bengal'], ganga: ['kalinga'], paramara: ['malwa'], chalukya: ['deccan'], chola: ['chola', 'vengi', 'lanka'],
+    // Europa
+    castile: ['galicia', 'leon', 'castile', 'portugal'],
+    cordoba: ['toledo', 'aragon', 'valencia', 'cordoba', 'seville', 'granada'],
+    barcelona: ['catalonia'],
+    france: ['paris'], burgundy: ['burgundy'], normandy: ['normandy'], brittany: ['brittany'], aquitaine: ['aquitaine'], toulouse: ['toulouse'], flanders: ['flanders'],
+    england: ['england', 'mercia', 'northumbria'], scotland: ['scotland'], ireland: ['ireland'],
+    hre: ['rhineland', 'saxony', 'franconia', 'bavaria', 'swabia', 'lotharingia', 'austria', 'provence', 'lombardy', 'tuscany', 'genoa'],
+    bohemia: ['bohemia'], venice: ['venice'], papacy: ['rome'], lombards: ['campania'], kalbid: ['sicily'],
+    denmark: ['denmark', 'scania'], norway: ['norway'], sweden: ['sweden', 'gotaland'],
+    poland: ['greater_poland', 'masovia', 'lesser_poland', 'pomerania'],
+    prussians: ['prussia'], lithuanians: ['lithuania'], livonians: ['livonia'],
+    hungary: ['hungary', 'transylvania'], croatia: ['croatia'], serbia: ['serbia'],
+    // Ferner Osten
+    naiman: ['khovd'], kerait: ['orkhon'], tatars: ['kerulen', 'tatar'],
+    liao: ['shangjing', 'liaodong', 'yanjing'], jurchen_tribes: ['jurchen'], goryeo: ['goryeo'],
+    song: ['kaifeng', 'hebei', 'shanxi', 'shandong', 'changan', 'sichuan', 'jingxiang', 'hunan', 'jiangxi', 'jiangning', 'hangzhou', 'fujian', 'guangzhou', 'guangxi'],
+    xixia: ['xingqing'], ganzhou_uyghur: ['ganzhou'], guiyi: ['dunhuang'], tsongkha: ['amdo'], tibet: ['lhasa'], guge: ['guge'], dali: ['dali'],
+    daiviet: ['daiviet'], champa: ['champa'], khmer: ['angkor'], lavo: ['lavo'], pagan: ['pagan'],
+    // Afrika
+    zirid: ['ifriqiya', 'constantine', 'tripolitania', 'cyrenaica', 'ouargla'],
+    zenata: ['fez', 'tlemcen', 'marrakesh', 'sijilmasa'], zawila: ['fezzan'],
+    ghana: ['ghana', 'awdaghust', 'timbuktu'], gao: ['gao'], mali: ['mali'], kanem: ['kanem'], hausa: ['kano'], ife: ['ife'],
+    alodia: ['alodia'], ethiopia: ['axum', 'lasta'], shewa: ['shewa'], zeila: ['zeila'],
+  },
+};
+
+extend(SCENARIOS.s1000, {
+  ...WEST_ASIA_1000,
+  capitals: { castile: 'leon', cordoba: 'cordoba', hre: 'rhineland', france: 'paris', england: 'england', poland: 'greater_poland', hungary: 'hungary', liao: 'shangjing', song: 'kaifeng', xixia: 'xingqing', chola: 'chola', zirid: 'ifriqiya', ghana: 'ghana', ethiopia: 'axum', denmark: 'denmark', sweden: 'sweden', tatars: 'kerulen', zenata: 'fez' },
+  govs: { liao: 'sultanate' },
+  titles: { hre: ['kaiser'], song: ['huangdi'], cordoba: ['caliph'] },
+  vassals: [['bohemia', 'hre'], ['jurchen_tribes', 'liao'], ['goryeo', 'liao'], ['kalbid', 'fatimid'], ['zirid', 'fatimid'], ['zenata', 'cordoba']],
+  wars: [['cordoba', 'castile'], ['song', 'liao'], ['denmark', 'england'], ['song', 'xixia']],
+  alliances: [['hre', 'poland'], ['byzantine', 'venice']],
+  gold: { song: 1200, liao: 600, hre: 600, cordoba: 700, france: 300, england: 400, venice: 500 },
+  techs: {
+    song: ['diwan', 'paper', 'mint', 'cadastre', 'madrasa', 'translation', 'mathematics', 'printing', 'compass', 'qanat', 'poetry'],
+    liao: ['composite_bow', 'kurultai', 'lamellar', 'diwan'],
+    cordoba: ['diwan', 'madrasa', 'translation', 'paper', 'mathematics', 'architecture', 'medicine'],
+    hre: ['heavy_lancers', 'fortification'], venice: ['mint', 'caravanserai', 'bazaar'],
+  },
+  rulers: {
+    hre: { ruler: R('Otto III.', 'III. Otto', 980, { mar: 6, adm: 6, dip: 7, traits: ['pious', 'ambitious'] }), family: [R('Heinrich von Bayern', 'Bavyeralı Heinrich', 973, { rel: 'cousin', adm: 7, traits: ['pious', 'just'] })] },
+    france: { ruler: R('Robert II. der Fromme', 'Dindar II. Robert', 972, { mar: 4, adm: 6, dip: 6, traits: ['pious'] }), family: [R('Hugo', 'Hugues', 1007, { rel: 'son' })] },
+    england: { ruler: R('Æthelred der Unberatene', 'Tedbirsiz Æthelred', 966, { mar: 3, adm: 4, dip: 3, traits: ['paranoid'] }), family: [R('Edmund Eisenseite', 'Demir Böğür Edmund', 990, { rel: 'son', mar: 8, traits: ['brave'] })] },
+    castile: { ruler: R('Alfons V. von León', 'Leonlu V. Alfonso', 994, { mar: 6, adm: 5, dip: 5 }), family: [R('Sancho García', 'Sancho García', 965, { rel: 'uncle', mar: 7, traits: ['brave'] })] },
+    cordoba: { ruler: R('Hischam II.', 'II. Hişam', 965, { mar: 2, adm: 3, dip: 3, traits: ['pious'] }), family: [R('Abd al-Malik', 'Abdülmelik', 975, { rel: 'cousin', mar: 7 })], vizier: R('al-Mansur', 'Mansur', 938, { mar: 10, adm: 8, dip: 5, traits: ['strategist', 'ghazi', 'ambitious'] }) },
+    venice: { ruler: R('Pietro II. Orseolo', 'II. Pietro Orseolo', 961, { mar: 6, adm: 8, dip: 8, traits: ['builder', 'wise'] }), family: [R('Otto Orseolo', 'Otto Orseolo', 992, { rel: 'son' })] },
+    hungary: { ruler: R('Stephan I.', 'I. İştvan', 975, { mar: 7, adm: 8, dip: 6, traits: ['pious', 'just'] }), family: [R('Emmerich', 'İmre', 1007, { rel: 'son', traits: ['pious'] })] },
+    song: { ruler: R('Kaiser Zhenzong', 'İmparator Zhenzong', 968, { mar: 4, adm: 7, dip: 6, traits: ['pious'] }), family: [R('Zhao Zhen', 'Zhao Zhen', 1010, { rel: 'son' })], vizier: R('Kou Zhun', 'Kou Zhun', 961, { adm: 8, dip: 6, mar: 5, traits: ['wise', 'just'] }) },
+    liao: { ruler: R('Kaiser Shengzong', 'İmparator Shengzong', 972, { mar: 7, adm: 6, dip: 5, traits: ['strategist'] }), family: [R('Xiao Chuo', 'Xiao Chuo', 953, { rel: 'mother', female: true, adm: 9, mar: 8, traits: ['strategist', 'wise'] })] },
+    xixia: { ruler: R('Li Jiqian', 'Li Jiqian', 963, { mar: 7, adm: 5, dip: 5, traits: ['ambitious', 'brave'] }), family: [R('Li Deming', 'Li Deming', 981, { rel: 'son', adm: 6 })] },
+  },
+});
+
+extend(SCENARIOS.s1071, {
+  owners: {
+    rus: ['chernigov', 'smolensk', 'novgorod', 'galich', 'vladimir', 'ryazan'],
+    kipchak: ['wallachia'],
+    byzantine: ['hellas', 'morea', 'epirus', 'crete'],
+    pala: ['bengal'], ganga: ['kalinga'], paramara: ['malwa'], chalukya: ['deccan'], chola: ['chola', 'vengi'], lanka: ['lanka'],
+    castile: ['galicia', 'leon', 'castile', 'portugal'],
+    taifa_toledo: ['toledo', 'valencia'], taifa_zaragoza: ['aragon'], taifa_seville: ['seville', 'cordoba', 'granada'], barcelona: ['catalonia'],
+    france: ['paris'], burgundy: ['burgundy'], aquitaine: ['aquitaine'], toulouse: ['toulouse'], flanders: ['flanders'], brittany: ['brittany'],
+    england: ['england', 'mercia', 'northumbria', 'normandy'], scotland: ['scotland'], ireland: ['ireland'],
+    hre: ['rhineland', 'saxony', 'franconia', 'bavaria', 'swabia', 'lotharingia', 'austria', 'provence', 'lombardy', 'tuscany'],
+    bohemia: ['bohemia'], genoa: ['genoa'], venice: ['venice'], papacy: ['rome'], hauteville: ['apulia', 'campania'], kalbid: ['sicily'],
+    denmark: ['denmark', 'scania'], norway: ['norway'], sweden: ['sweden', 'gotaland'],
+    poland: ['greater_poland', 'masovia', 'lesser_poland'], pomerania: ['pomerania'],
+    prussians: ['prussia'], lithuanians: ['lithuania'], livonians: ['livonia'],
+    hungary: ['hungary', 'transylvania'], croatia: ['croatia'], serbia: ['serbia'],
+    naiman: ['khovd'], kerait: ['orkhon'], tatars: ['kerulen', 'tatar'],
+    liao: ['shangjing', 'liaodong', 'yanjing'], jurchen_tribes: ['jurchen'], goryeo: ['goryeo'],
+    song: ['kaifeng', 'hebei', 'shanxi', 'shandong', 'changan', 'sichuan', 'jingxiang', 'hunan', 'jiangxi', 'jiangning', 'hangzhou', 'fujian', 'guangzhou', 'guangxi'],
+    xixia: ['xingqing', 'ganzhou', 'dunhuang'], tsongkha: ['amdo'], tibet: ['lhasa'], guge: ['guge'], dali: ['dali'],
+    daiviet: ['daiviet'], champa: ['champa'], khmer: ['angkor', 'lavo'], pagan: ['pagan'],
+    zirid: ['ifriqiya'], hammadid: ['constantine', 'ouargla'], hilal: ['tripolitania', 'cyrenaica'],
+    almoravid: ['marrakesh', 'sijilmasa', 'fez', 'awdaghust'], zenata: ['tlemcen'], zawila: ['fezzan'],
+    ghana: ['ghana', 'timbuktu'], gao: ['gao'], mali: ['mali'], kanem: ['kanem'], hausa: ['kano'], ife: ['ife'],
+    alodia: ['alodia'], ethiopia: ['axum', 'lasta'], shewa: ['shewa'], zeila: ['zeila'],
+  },
+  capitals: { castile: 'castile', hre: 'saxony', france: 'paris', england: 'england', poland: 'lesser_poland', hungary: 'hungary', liao: 'shangjing', song: 'kaifeng', xixia: 'xingqing', chola: 'chola', zirid: 'ifriqiya', hammadid: 'constantine', almoravid: 'marrakesh', ghana: 'ghana', ethiopia: 'lasta', taifa_seville: 'seville', denmark: 'denmark', sweden: 'sweden', tatars: 'kerulen', khmer: 'angkor' },
+  govs: { liao: 'sultanate', almoravid: 'nomad' },
+  titles: { hre: ['kaiser'], song: ['huangdi'] },
+  vassals: [['bohemia', 'hre'], ['jurchen_tribes', 'liao'], ['goryeo', 'liao'], ['taifa_toledo', 'castile']],
+  wars: [['hauteville', 'kalbid'], ['song', 'xixia'], ['almoravid', 'zenata'], ['almoravid', 'ghana']],
+  alliances: [['byzantine', 'venice']],
+  gold: { song: 1400, liao: 700, hre: 600, england: 600, almoravid: 500, venice: 700 },
+  techs: {
+    song: ['diwan', 'paper', 'mint', 'cadastre', 'madrasa', 'translation', 'mathematics', 'printing', 'compass', 'gunpowder', 'qanat', 'poetry', 'astronomy', 'vizierate'],
+    liao: ['composite_bow', 'kurultai', 'lamellar', 'diwan', 'heavy_lancers'],
+    xixia: ['lamellar', 'heavy_lancers', 'diwan'],
+    hre: ['heavy_lancers', 'fortification', 'lamellar'], england: ['heavy_lancers', 'fortification', 'cadastre'], france: ['heavy_lancers'],
+    venice: ['mint', 'caravanserai', 'bazaar', 'compass'], hauteville: ['heavy_lancers', 'fortification'],
+    almoravid: ['composite_bow', 'sufi'],
+  },
+  rulers: {
+    hre: { ruler: R('Heinrich IV.', 'IV. Heinrich', 1050, { mar: 6, adm: 5, dip: 4, traits: ['ambitious', 'brave'] }), family: [R('Konrad', 'Konrad', 1074, { rel: 'son' })] },
+    france: { ruler: R('Philipp I.', 'I. Philippe', 1052, { mar: 4, adm: 5, dip: 5, traits: ['greedy'] }), family: [R('Hugo von Vermandois', 'Vermandoislu Hugues', 1053, { rel: 'brother', mar: 6 })] },
+    england: { ruler: R('Wilhelm der Eroberer', 'Fatih William', 1028, { mar: 9, adm: 8, dip: 5, traits: ['strategist', 'cruel', 'ambitious'] }), family: [R('Robert Kurzhose', 'Kısa Çoraplı Robert', 1051, { rel: 'son', mar: 6, traits: ['brave'] }), R('Wilhelm Rufus', 'Kızıl William', 1056, { rel: 'son', mar: 6 }), R('Heinrich', 'Henry', 1068, { rel: 'son', adm: 8, traits: ['wise'] })], vizier: R('Lanfranc', 'Lanfranc', 1005, { adm: 8, dip: 7, mar: 2, traits: ['scholar', 'pious'] }) },
+    castile: { ruler: R('Sancho II.', 'II. Sancho', 1036, { mar: 7, adm: 4, dip: 3, traits: ['ambitious', 'brave'] }), family: [R('Alfons', 'Alfonso', 1040, { rel: 'brother', mar: 7, adm: 7, dip: 7, traits: ['ambitious'] })], general: R('Rodrigo Díaz (El Cid)', 'Rodrigo Díaz (El Cid)', 1043, { mar: 10, adm: 5, traits: ['strategist', 'brave'], loyalty: 60 }) },
+    venice: { ruler: R('Domenico Selvo', 'Domenico Selvo', 1020, { mar: 5, adm: 7, dip: 8, traits: ['builder'] }), family: [] },
+    hungary: { ruler: R('Salomon', 'Salamon', 1053, { mar: 5, adm: 4, dip: 4, traits: ['paranoid'] }), family: [R('Géza', 'Géza', 1040, { rel: 'cousin', mar: 7, traits: ['ambitious'] }), R('Ladislaus', 'László', 1040, { rel: 'cousin', mar: 8, traits: ['pious', 'brave'] })] },
+    song: { ruler: R('Kaiser Shenzong', 'İmparator Shenzong', 1048, { mar: 4, adm: 7, dip: 5, traits: ['ambitious'] }), family: [R('Zhao Xu', 'Zhao Xu', 1077, { rel: 'son' })], vizier: R('Wang Anshi', 'Wang Anşi', 1021, { adm: 10, dip: 5, mar: 3, traits: ['wise', 'scholar'] }) },
+    liao: { ruler: R('Kaiser Daozong', 'İmparator Daozong', 1032, { mar: 4, adm: 5, dip: 5, traits: ['pious'] }), family: [R('Yelü Jun', 'Yelü Cun', 1058, { rel: 'son' })] },
+    xixia: { ruler: R('Li Bingchang', 'Li Bingçang', 1061, { mar: 4, adm: 4, dip: 4 }), family: [R('Liang-Kaiserinwitwe', 'İmparatoriçe Dul Liang', 1045, { rel: 'mother', female: true, mar: 7, adm: 7, traits: ['ambitious'] })] },
+    almoravid: { ruler: R('Yusuf ibn Taschfin', 'Yusuf bin Taşfin', 1009, { mar: 9, adm: 8, dip: 6, traits: ['strategist', 'pious', 'ghazi'] }), family: [R('Ali ibn Yusuf', 'Ali bin Yusuf', 1084, { rel: 'son', adm: 6, traits: ['pious'] }), R('Abu Bakr ibn Umar', 'Ebubekir bin Ömer', 1020, { rel: 'cousin', mar: 7 })] },
+  },
+});
+
+extend(SCENARIOS.s1200, {
+  owners: {
+    rus: ['chernigov', 'smolensk'], novgorod: ['novgorod'], vladimir: ['vladimir', 'ryazan'], galicia_volhynia: ['galich'],
+    kipchak: ['wallachia'],
+    byzantine: ['hellas', 'morea', 'epirus', 'crete'],
+    sena: ['bengal'], ganga: ['kalinga'], paramara: ['malwa'], yadava: ['deccan'], chola: ['chola', 'vengi'], lanka: ['lanka'],
+    castile: ['galicia', 'leon', 'castile', 'toledo'], portugal: ['portugal'], aragon: ['aragon', 'catalonia'],
+    almohad: ['seville', 'cordoba', 'granada', 'valencia', 'ifriqiya', 'constantine', 'tlemcen', 'fez', 'marrakesh', 'sijilmasa', 'ouargla', 'tripolitania'],
+    france: ['paris', 'burgundy'], flanders: ['flanders'], toulouse: ['toulouse'],
+    england: ['england', 'mercia', 'northumbria', 'normandy', 'aquitaine', 'brittany'], scotland: ['scotland'], ireland: ['ireland'],
+    hre: ['rhineland', 'saxony', 'franconia', 'bavaria', 'swabia', 'lotharingia', 'austria', 'provence', 'tuscany'],
+    bohemia: ['bohemia'], lombard_league: ['lombardy'], genoa: ['genoa'], venice: ['venice'], papacy: ['rome'], sicily: ['sicily', 'apulia', 'campania'],
+    denmark: ['denmark', 'scania', 'pomerania'], norway: ['norway'], sweden: ['sweden', 'gotaland'],
+    poland: ['greater_poland', 'masovia', 'lesser_poland'],
+    prussians: ['prussia'], lithuanians: ['lithuania'], livonians: ['livonia'],
+    hungary: ['hungary', 'transylvania', 'croatia'], serbia: ['serbia'],
+    naiman: ['khovd'], kerait: ['orkhon', 'kerulen'], tatars: ['tatar'],
+    jin: ['jurchen', 'shangjing', 'liaodong', 'yanjing', 'hebei', 'shanxi', 'kaifeng', 'shandong', 'changan'], goryeo: ['goryeo'],
+    song: ['sichuan', 'jingxiang', 'hunan', 'jiangxi', 'jiangning', 'hangzhou', 'fujian', 'guangzhou', 'guangxi'],
+    xixia: ['xingqing', 'ganzhou', 'dunhuang', 'amdo'], tibet: ['lhasa'], guge: ['guge'], dali: ['dali'],
+    daiviet: ['daiviet'], champa: ['champa'], khmer: ['angkor', 'lavo'], pagan: ['pagan'],
+    hilal: ['cyrenaica'], kanem: ['kanem', 'fezzan'],
+    sosso: ['ghana', 'awdaghust'], gao: ['gao', 'timbuktu'], mali: ['mali'], hausa: ['kano'], ife: ['ife'],
+    alodia: ['alodia'], ethiopia: ['axum', 'lasta'], shewa: ['shewa'], zeila: ['zeila'],
+  },
+  capitals: { castile: 'toledo', hre: 'rhineland', france: 'paris', england: 'england', poland: 'lesser_poland', hungary: 'hungary', jin: 'yanjing', song: 'hangzhou', xixia: 'xingqing', chola: 'chola', almohad: 'marrakesh', sicily: 'sicily', ethiopia: 'lasta', denmark: 'denmark', sweden: 'sweden', kerait: 'orkhon', aragon: 'catalonia', kanem: 'kanem', khmer: 'angkor', vladimir: 'vladimir' },
+  govs: { jin: 'sultanate', almohad: 'sultanate' },
+  titles: { hre: ['kaiser'], song: ['huangdi'], almohad: ['caliph'] },
+  vassals: [['bohemia', 'hre'], ['goryeo', 'jin'], ['tatars', 'jin'], ['xixia', 'jin'], ['galicia_volhynia', 'hungary']],
+  wars: [['england', 'france'], ['castile', 'almohad'], ['sosso', 'mali'], ['song', 'jin']],
+  alliances: [['castile', 'aragon'], ['england', 'flanders']],
+  gold: { song: 1200, jin: 900, hre: 500, england: 700, france: 700, almohad: 900, venice: 900 },
+  techs: {
+    '*': [],
+    song: ['diwan', 'paper', 'mint', 'cadastre', 'translation', 'mathematics', 'printing', 'compass', 'gunpowder', 'astronomy', 'vizierate', 'sakk', 'bazaar', 'medicine', 'historiography'],
+    jin: ['lamellar', 'heavy_lancers', 'kurultai', 'iqta', 'cadastre', 'gunpowder', 'fortification'],
+    xixia: ['lamellar', 'heavy_lancers', 'fortification', 'printing'],
+    hre: ['heavy_lancers', 'lamellar', 'three_field', 'counterweight'], england: ['heavy_lancers', 'lamellar', 'cadastre', 'three_field', 'counterweight', 'longbow'], france: ['heavy_lancers', 'lamellar', 'three_field', 'counterweight'],
+    venice: ['mint', 'bazaar', 'compass', 'sakk', 'three_field'], almohad: ['iqta', 'ghulam', 'lamellar', 'counterweight', 'sufi', 'translation'],
+    castile: ['heavy_lancers', 'lamellar', 'fortification', 'translation'],
+  },
+  rulers: {
+    hre: { ruler: R('Philipp von Schwaben', 'Svabyalı Philipp', 1177, { mar: 6, adm: 6, dip: 6, traits: ['charismatic'] }), family: [R('Friedrich', 'Friedrich', 1194, { rel: 'nephew', mar: 8, adm: 9, dip: 8, traits: ['scholar', 'ambitious'] })] },
+    france: { ruler: R('Philipp II. August', 'II. Philippe Auguste', 1165, { mar: 8, adm: 9, dip: 7, traits: ['strategist', 'ambitious'] }), family: [R('Ludwig', 'Louis', 1187, { rel: 'son', mar: 7 })] },
+    england: { ruler: R('Johann Ohneland', 'Topraksız John', 1166, { mar: 3, adm: 6, dip: 2, traits: ['cruel', 'paranoid', 'greedy'] }), family: [R('Heinrich', 'Henry', 1207, { rel: 'son' })], general: R('William Marshal', 'William Marshal', 1146, { mar: 10, adm: 6, traits: ['brave', 'strategist'], loyalty: 80 }) },
+    castile: { ruler: R('Alfons VIII.', 'VIII. Alfonso', 1155, { mar: 8, adm: 6, dip: 6, traits: ['brave', 'pious'] }), family: [R('Heinrich', 'Enrique', 1204, { rel: 'son' })] },
+    venice: { ruler: R('Enrico Dandolo', 'Enrico Dandolo', 1107, { mar: 7, adm: 9, dip: 9, traits: ['strategist', 'ambitious'] }), family: [] },
+    hungary: { ruler: R('Emmerich', 'İmre', 1174, { mar: 5, adm: 5, dip: 5 }), family: [R('Andreas', 'András', 1177, { rel: 'brother', mar: 6, traits: ['ambitious'] })] },
+    song: { ruler: R('Kaiser Ningzong', 'İmparator Ningzong', 1168, { mar: 3, adm: 4, dip: 4, traits: ['pious'] }), family: [], vizier: R('Han Tuozhou', 'Han Tuoçou', 1152, { adm: 6, dip: 4, mar: 6, traits: ['ambitious'] }) },
+    jin: { ruler: R('Kaiser Zhangzong', 'İmparator Zhangzong', 1168, { mar: 5, adm: 7, dip: 6, traits: ['scholar'] }), family: [R('Wanyan Yongji', 'Wanyan Yongci', 1168, { rel: 'uncle', mar: 3 })] },
+    xixia: { ruler: R('Kaiser Huanzong', 'İmparator Huanzong', 1177, { mar: 4, adm: 5, dip: 5 }), family: [R('Li Anquan', 'Li Ançuan', 1170, { rel: 'cousin', mar: 5, traits: ['ambitious'] })] },
+    almohad: { ruler: R('Muhammad an-Nasir', 'Muhammed en-Nasır', 1182, { mar: 5, adm: 6, dip: 5, traits: ['pious'] }), family: [R('Yusuf', 'Yusuf', 1197, { rel: 'son' })] },
+    ethiopia: { ruler: R('Gebre Meskel Lalibela', 'Gebre Meskel Lalibela', 1162, { mar: 5, adm: 8, dip: 6, traits: ['pious', 'builder'] }), family: [R('Yetbarak', 'Yetbarak', 1190, { rel: 'son' })] },
+  },
+});

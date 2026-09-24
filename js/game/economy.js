@@ -1,6 +1,6 @@
 // Wirtschaft, Ordnung, Bevölkerung, Religion, Bauen, Forschung, Rekrutierung.
 
-import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, armiesIn, atWar, neighbors, ROUTES_BY_PROV, relPeek, log, newId, provName, bfsDistances, rng, setOwner, rel } from './state.js';
+import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, armiesIn, atWar, neighbors, ROUTES_BY_PROV, relPeek, log, newId, provName, bfsDistances, staticDistances, rng, setOwner, rel, bumpAlive } from './state.js';
 import { TERRAINS, GOODS, TRADE_ROUTES, GOVERNMENTS, RELIGIONS, CULTURES } from '../data/world.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { TECHS, techCost } from '../data/techs.js';
@@ -10,6 +10,7 @@ import { stat } from './characters.js';
 import { TRAITS } from '../data/people.js';
 import { clamp } from '../util.js';
 import { specialtyEff } from '../data/specialties.js';
+import { discoverByTech, knows } from './discovery.js';
 import { focusEff, goodPrice, hasResource, IMPORT_SURCHARGE, loanPayments, processLoans, treatyFlows, clearResourceCache, clearMarketCache } from './market.js';
 
 export const UPKEEP_SCALE = 2;
@@ -120,7 +121,7 @@ export function computeDistances() {
   G.distCache = {};
   for (const f of Object.values(G.s.factions)) {
     if (!f.alive || !f.capital) continue;
-    G.distCache[f.id] = bfsDistances(f.capital, () => true);
+    G.distCache[f.id] = staticDistances(f.capital);
   }
 }
 
@@ -261,6 +262,7 @@ export function processEconomy(fid) {
       f.research.pts -= cost;
       f.techs.push(f.research.cur);
       if (fid === G.s.player) log('log.techDone', { tech: TECHS[f.research.cur].n }, { f: fid, imp: true });
+      discoverByTech(fid, TECHS[f.research.cur]);
       f.research.cur = null;
       clearModCache();
     }
@@ -390,6 +392,7 @@ export function techAvailable(fid, tid) {
   const f = fac(fid), t = TECHS[tid];
   if (f.techs.includes(tid)) return false;
   if (t.minYear && G.s.year < t.minYear) return false;
+  if (t.reqRegion && !knows(fid, t.reqRegion)) return false;
   return t.req.every((r) => f.techs.includes(r));
 }
 

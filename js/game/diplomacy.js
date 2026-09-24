@@ -7,11 +7,16 @@ import { TITLES } from '../data/factions.js';
 import { clamp } from '../util.js';
 import { generals, loyalty, createChar, civilWar } from './characters.js';
 import { setPayment, resourceAccess } from './market.js';
+import { contactByWar } from './discovery.js';
 
 export const TRUCE_TURNS = 12;
 
 export function militaryPower(fid) {
-  return factionArmies(fid).reduce((s, a) => s + armyPower(a), 0) + factionProvinces(fid).length * 300;
+  const c = G.powerCache;
+  if (c && c.has(fid)) return c.get(fid);
+  const v = factionArmies(fid).reduce((s, a) => s + armyPower(a), 0) + factionProvinces(fid).length * 300;
+  if (c) c.set(fid, v);
+  return v;
 }
 
 export function borders(a, b) {
@@ -60,6 +65,7 @@ export function declareWar(a, b, opts = {}) {
   fa.infamy += holy ? 3 : fb.infamy > 50 ? 4 : 10;
   if (truce) { fa.infamy += 20; fa.prestige = Math.max(0, fa.prestige - 20); }
   log('log.war', { a: fa.n, b: fb.n }, { f: a, imp: a === G.s.player || b === G.s.player });
+  contactByWar(a, b);
   // Bündnispartner und Vasallen
   for (const ally of [...alliesOf(b), ...vassalsOf(b)]) {
     if (ally === a || atWar(ally, a)) continue;
@@ -314,6 +320,8 @@ export function titleClaimable(fid, tid) {
   if (tid === 'khagan' && f.culture !== 'turkic' && f.culture !== 'mongolic') return { ok: false, reason: 't.turkic' };
   if (tid === 'shahanshah' && !['persian', 'kurdish', 'turkic'].includes(f.culture)) return { ok: false, reason: 't.persian' };
   if (tid === 'basileus' && f.religion !== 'orthodox') return { ok: false, reason: 't.orthodox' };
+  if (tid === 'kaiser' && f.religion !== 'catholic') return { ok: false, reason: 't.catholic' };
+  if (tid === 'huangdi' && !['han', 'jurchen', 'mongolic', 'tangut', 'korean'].includes(f.culture)) return { ok: false, reason: 't.sinic' };
   const need = t.needs || [];
   const missing = need.filter((p) => prov(p).owner !== fid);
   if (missing.length) return { ok: false, reason: 't.needs', missing };

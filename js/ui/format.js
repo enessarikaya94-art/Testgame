@@ -14,6 +14,7 @@ export function formatLog(e) {
     case 'log.succession': p.minorText = p.minor ? t('log.minor') : ''; break;
     case 'log.destroyed': p.byText = p.by ? t('log.destroyedBy', { by: L(p.by) }) : ''; break;
     case 'we.vein': p.goodName = L(GOODS[p.good].n); break;
+    case 'log.discover': p.causeText = t(p.cause || 'disc.event', { via: p.via }); break;
     case 'log.battle': p.kind = t(p.assault ? 'log.assault' : 'log.fieldBattle'); break;
     default: break;
   }

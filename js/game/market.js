@@ -73,19 +73,24 @@ export function updateMarket() {
 
 // Monopol: mind. 2 Quellen und mind. 60 % aller Quellen eines Guts
 export function monopolies(fid) {
-  if (G.monoCache?.[fid]) return G.monoCache[fid];
-  const own = {}, all = {};
-  for (const pid in G.s.provinces) {
-    const p = G.s.provinces[pid];
-    for (const g of [...pdef(pid).goods, ...(p.extraGoods || [])]) {
+  if (!G.monoCache || !G.monoCache.__all) {
+    // Ein Durchlauf für alle Mächte
+    const own = {}, all = {};
+    const count = (pid, g, o) => {
       all[g] = (all[g] || 0) + 1;
-      if (p.owner === fid) own[g] = (own[g] || 0) + 1;
+      const m = own[o] || (own[o] = {});
+      m[g] = (m[g] || 0) + 1;
+    };
+    for (const pid in G.s.provinces) {
+      const p = G.s.provinces[pid];
+      for (const g of pdef(pid).goods) count(pid, g, p.owner);
+      if (p.extraGoods) for (const g of p.extraGoods) count(pid, g, p.owner);
     }
+    const cache = { __all: true };
+    for (const [o, m] of Object.entries(own)) cache[o] = Object.keys(m).filter((g) => m[g] >= 2 && m[g] / all[g] >= 0.6);
+    G.monoCache = cache;
   }
-  const out = Object.keys(own).filter((g) => own[g] >= 2 && own[g] / all[g] >= 0.6);
-  G.monoCache = G.monoCache || {};
-  G.monoCache[fid] = out;
-  return out;
+  return G.monoCache[fid] || [];
 }
 export function clearMarketCache() { G.monoCache = {}; }
 

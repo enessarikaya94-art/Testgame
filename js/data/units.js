@@ -17,7 +17,8 @@ export const UNIT_CLASSES = {
   siege: { n: { de: 'Belagerungsgerät', tr: 'Kuşatma Aleti' }, speed: 1.5, cav: false, ranged: true },
 };
 
-const STEPPE = ['turkic', 'mongolic'];
+const STEPPE = ['turkic', 'mongolic', 'magyar', 'jurchen'];
+const WEST = ['latin', 'german', 'anglo', 'italian', 'iberian'];
 
 export const UNITS = {
   militia: {
@@ -101,7 +102,7 @@ export const UNITS = {
   camels: {
     n: { de: 'Kamelreiter', tr: 'Deve Süvarileri' }, cls: 'camel',
     att: 6, def: 5, rng: 4, cha: 4, mor: 6, size: 70, cost: 30, horses: 0, upkeep: 0.7,
-    req: { b: 'stables', l: 1 }, cultures: ['arab', 'nubian'],
+    req: { b: 'stables', l: 1 }, cultures: ['arab', 'nubian', 'berber'],
     desc: { de: 'In der Wüste unermüdlich. Pferde scheuen vor Kamelen.', tr: 'Çölde yorulmak bilmezler. Atlar develerden ürker.' },
   },
   nubian_archers: {
@@ -143,7 +144,7 @@ export const UNITS = {
   mountaineers: {
     n: { de: 'Kaukasische Bergkrieger', tr: 'Kafkas Dağ Savaşçıları' }, cls: 'inf',
     att: 7, def: 6, rng: 3, cha: 3, mor: 7, size: 100, cost: 35, horses: 0, upkeep: 0.7,
-    req: { b: 'barracks', l: 1 }, cultures: ['armenian', 'georgian', 'alan', 'kurdish'],
+    req: { b: 'barracks', l: 1 }, cultures: ['armenian', 'georgian', 'alan', 'kurdish', 'tibetan'],
     desc: { de: 'Zähe Kämpfer aus den Bergtälern.', tr: 'Dağ vadilerinin çetin savaşçıları.' },
   },
   druzhina: {
@@ -155,19 +156,19 @@ export const UNITS = {
   knights: {
     n: { de: 'Fränkische Ritter', tr: 'Frenk Şövalyeleri' }, cls: 'hc',
     att: 11, def: 10, rng: 0, cha: 11, mor: 9, size: 50, cost: 110, horses: 15, upkeep: 2.4,
-    req: { b: 'stables', l: 1 }, needs: ['iron'], cultures: ['latin'],
+    req: { b: 'stables', l: 1 }, needs: ['iron'], cultures: [...WEST, 'magyar'],
     desc: { de: 'Ihr Lanzenangriff ist unaufhaltsam, wenn er gelingt.', tr: 'Mızrak hücumları başarılı olursa durdurulamaz.' },
   },
   sergeants: {
     n: { de: 'Sergeanten', tr: 'Çavuş Piyadesi' }, cls: 'spear',
     att: 6, def: 8, rng: 0, cha: 2, mor: 7, size: 100, cost: 35, horses: 0, upkeep: 0.7,
-    req: { b: 'barracks', l: 1 }, cultures: ['latin'],
+    req: { b: 'barracks', l: 1 }, cultures: [...WEST, 'norse', 'gaelic'],
     desc: { de: 'Gepanzertes Fußvolk der Kreuzfahrer.', tr: 'Haçlıların zırhlı piyadesi.' },
   },
   crossbows: {
     n: { de: 'Armbrustschützen', tr: 'Arbaletçiler' }, cls: 'arch',
     att: 4, def: 5, rng: 9, cha: 0, mor: 6, size: 100, cost: 40, horses: 0, upkeep: 0.8,
-    req: { b: 'barracks', l: 1 }, cultures: ['latin'],
+    req: { b: 'barracks', l: 1 }, cultures: WEST,
     desc: { de: 'Durchschlagskräftige Schützen.', tr: 'Delici atış gücüne sahip nişancılar.' },
   },
   rajputs: {
@@ -179,7 +180,7 @@ export const UNITS = {
   elephants: {
     n: { de: 'Kriegselefanten', tr: 'Savaş Filleri' }, cls: 'ele',
     att: 13, def: 8, rng: 2, cha: 13, mor: 6, size: 20, cost: 120, horses: 0, upkeep: 2.5,
-    req: { b: 'stables', l: 2 }, cultures: ['indian'],
+    req: { b: 'stables', l: 2 }, cultures: ['indian', 'seasian'],
     desc: { de: 'Furchteinflößend. Mahmud von Ghazna führte Hunderte davon.', tr: 'Korku salarlar. Gazneli Mahmud yüzlercesine sahipti.' },
   },
   mangonel: {
@@ -230,6 +231,81 @@ export const UNITS = {
     req: null, cultures: [],
     desc: { de: 'Todesbereite Gefolgsleute des Alten vom Berge.', tr: 'Dağın Şeyhi\'nin ölüme hazır müritleri.' },
   },
+  // --- Europa ---
+  huscarls: {
+    n: { de: 'Huskarle', tr: 'Huskarllar' }, cls: 'inf',
+    att: 9, def: 7, rng: 0, cha: 5, mor: 9, size: 80, cost: 45, horses: 0, upkeep: 0.9,
+    req: { b: 'barracks', l: 1 }, needs: ['iron'], cultures: ['norse', 'anglo', 'gaelic'],
+    desc: { de: 'Nordische Gefolgskrieger mit der langen Dänenaxt.', tr: 'Uzun Danimarka baltalı İskandinav maiyet savaşçıları.' },
+  },
+  longbowmen: {
+    n: { de: 'Langbogenschützen', tr: 'Uzun Yaylı Okçular' }, cls: 'arch',
+    att: 4, def: 4, rng: 12, cha: 0, mor: 7, size: 100, cost: 45, horses: 0, upkeep: 0.9,
+    req: { b: 'barracks', l: 1 }, tech: 'longbow', cultures: ['anglo', 'gaelic'],
+    desc: { de: 'Ihre Pfeilwolken entscheiden Schlachten, bevor die Ritter heran sind.', tr: 'Ok bulutları, şövalyeler yaklaşmadan savaşları belirler.' },
+  },
+  almogavars: {
+    n: { de: 'Almogávares', tr: 'Almogavarlar' }, cls: 'inf',
+    att: 8, def: 5, rng: 3, cha: 5, mor: 8, size: 90, cost: 35, horses: 0, upkeep: 0.7,
+    req: { b: 'barracks', l: 1 }, cultures: ['iberian'],
+    desc: { de: 'Leichtes Grenzfußvolk mit Wurfspeeren, gestählt in der Reconquista.', tr: 'Reconquista\'da pişmiş, cirit taşıyan hafif uç piyadesi.' },
+  },
+  jinetes: {
+    n: { de: 'Dschinete-Reiter', tr: 'Cinete Süvarileri' }, cls: 'lc',
+    att: 6, def: 4, rng: 5, cha: 4, mor: 6, size: 70, cost: 32, horses: 6, upkeep: 0.7,
+    req: { b: 'stables', l: 1, alt: { b: 'ordu', l: 1 } }, cultures: ['iberian', 'berber'],
+    desc: { de: 'Leichte Speerreiter der Zenata, gefürchtet in al-Andalus und Kastilien.', tr: 'Zenata\'nın hafif mızraklı atlıları; Endülüs\'te ve Kastilya\'da korkulur.' },
+  },
+  // --- Ferner Osten ---
+  chinese_crossbow: {
+    n: { de: 'Nu-Armbrustschützen', tr: 'Nu Arbaletçileri' }, cls: 'arch',
+    att: 4, def: 5, rng: 10, cha: 0, mor: 6, size: 110, cost: 38, horses: 0, upkeep: 0.7,
+    req: { b: 'barracks', l: 1 }, cultures: ['han', 'korean'],
+    desc: { de: 'Salven schwerer Armbrüste mit Abzugsmechanik aus Bronze.', tr: 'Bronz tetik düzenekli ağır arbaletlerle yaylım ateşi.' },
+  },
+  fire_lance: {
+    n: { de: 'Feuerlanzen', tr: 'Ateş Mızrakları' }, cls: 'inf',
+    att: 11, def: 5, rng: 4, cha: 6, mor: 7, size: 80, cost: 60, horses: 0, upkeep: 1.2,
+    req: { b: 'barracks', l: 2 }, tech: 'gunpowder', cultures: [],
+    desc: { de: 'Bambusrohre voller Schießpulver, die Flammen und Splitter speien.', tr: 'Alev ve kıymık püskürten barut dolu bambu borular.' },
+  },
+  iron_pagoda: {
+    n: { de: 'Eiserne Pagode', tr: 'Demir Pagoda' }, cls: 'hc',
+    att: 11, def: 11, rng: 2, cha: 10, mor: 9, size: 50, cost: 105, horses: 14, upkeep: 2.2,
+    req: { b: 'stables', l: 1, alt: { b: 'ordu', l: 1 } }, needs: ['iron'], cultures: ['jurchen'],
+    desc: { de: 'Schwerstgepanzerte Reiterei der Dschurdschen, Ross und Reiter in Eisen.', tr: 'Curcenlerin en ağır zırhlı süvarisi; at ve binici demire bürünmüş.' },
+  },
+  tangut_cav: {
+    n: { de: 'Eisenhabichte', tr: 'Demir Şahinler' }, cls: 'hc',
+    att: 10, def: 9, rng: 3, cha: 9, mor: 8, size: 60, cost: 90, horses: 12, upkeep: 1.9,
+    req: { b: 'stables', l: 1, alt: { b: 'ordu', l: 1 } }, needs: ['iron'], cultures: ['tangut'],
+    desc: { de: 'Die an ihre Pferde geketteten Panzerreiter der Tanguten.', tr: 'Tangutların atlarına zincirlenmiş zırhlı süvarileri.' },
+  },
+  // --- Afrika ---
+  murabitun: {
+    n: { de: 'Murabitun-Fußvolk', tr: 'Murabıt Piyadesi' }, cls: 'spear',
+    att: 6, def: 9, rng: 1, cha: 2, mor: 10, size: 110, cost: 35, horses: 0, upkeep: 0.7,
+    req: { b: 'barracks', l: 1 }, cultures: ['berber'],
+    desc: { de: 'Verschleierte Glaubenskrieger in dichten Reihen hinter Lederschilden.', tr: 'Deri kalkanların ardında sık saflar halinde peçeli inanç savaşçıları.' },
+  },
+  mande_cav: {
+    n: { de: 'Mande-Panzerreiter', tr: 'Mande Zırhlı Süvarileri' }, cls: 'hc',
+    att: 9, def: 7, rng: 2, cha: 9, mor: 8, size: 50, cost: 85, horses: 12, upkeep: 1.8,
+    req: { b: 'stables', l: 1 }, cultures: ['sudanic'],
+    desc: { de: 'Adlige Reiter auf importierten Berberpferden, der Stolz der Sahelreiche.', tr: 'İthal Berberi atları üzerindeki soylu süvariler; Sahel krallıklarının gururu.' },
+  },
+  sahel_archers: {
+    n: { de: 'Giftpfeil-Schützen', tr: 'Zehirli Ok Nişancıları' }, cls: 'arch',
+    att: 4, def: 3, rng: 9, cha: 0, mor: 6, size: 110, cost: 25, horses: 0, upkeep: 0.5,
+    req: null, cultures: ['sudanic'],
+    desc: { de: 'Bogenschützen des Sahel, deren vergiftete Pfeile Ross und Reiter fürchten.', tr: 'Zehirli oklarından at ve binicinin korktuğu Sahel okçuları.' },
+  },
+  habesha_warriors: {
+    n: { de: 'Hochlandkrieger', tr: 'Yayla Savaşçıları' }, cls: 'inf',
+    att: 7, def: 6, rng: 2, cha: 4, mor: 9, size: 100, cost: 30, horses: 0, upkeep: 0.6,
+    req: null, cultures: ['ethiopian'],
+    desc: { de: 'Speer- und Schildkämpfer aus den Bergen Abessiniens.', tr: 'Habeşistan dağlarından mızrak ve kalkan savaşçıları.' },
+  },
 };
 
 // Welche Truppen die KI und die Startarmeen je Kultur bevorzugen
@@ -247,4 +323,21 @@ export const CULTURE_ARMY = {
   latin: ['knights', 'sergeants', 'crossbows'],
   indian: ['rajputs', 'elephants', 'archers'],
   nubian: ['nubian_archers', 'camels', 'spearmen'],
+  german: ['knights', 'sergeants', 'crossbows', 'spearmen'],
+  italian: ['crossbows', 'sergeants', 'knights', 'spearmen'],
+  iberian: ['jinetes', 'almogavars', 'knights', 'crossbows'],
+  anglo: ['huscarls', 'sergeants', 'knights', 'archers', 'longbowmen'],
+  gaelic: ['spearmen', 'archers', 'huscarls'],
+  norse: ['huscarls', 'huscarls', 'archers', 'spearmen'],
+  baltic: ['spearmen', 'archers', 'militia'],
+  magyar: ['horse_archers', 'horse_archers', 'knights', 'spearmen'],
+  han: ['chinese_crossbow', 'spearmen', 'chinese_crossbow', 'spearmen', 'fire_lance'],
+  jurchen: ['iron_pagoda', 'horse_archers', 'horse_archers', 'spearmen'],
+  tangut: ['tangut_cav', 'horse_archers', 'spearmen', 'archers'],
+  tibetan: ['mountaineers', 'archers', 'spearmen'],
+  korean: ['archers', 'spearmen', 'chinese_crossbow'],
+  seasian: ['elephants', 'spearmen', 'archers'],
+  berber: ['jinetes', 'murabitun', 'camels', 'archers'],
+  sudanic: ['mande_cav', 'sahel_archers', 'spearmen'],
+  ethiopian: ['habesha_warriors', 'archers', 'spearmen'],
 };

@@ -21,6 +21,7 @@ import { DISEASES } from '../game/world-events.js';
 import { specialtiesOf } from '../data/specialties.js';
 import { FOCUS, setFocus, goodPrice, monopolies, RESOURCES } from '../game/market.js';
 import { saveAuto } from './saves.js';
+import { canSee, knownRegions } from '../game/discovery.js';
 
 export const UIState = { map: null, tab: 'info', splitSel: new Set(), onExit: null };
 
@@ -49,6 +50,8 @@ function makeGameAccess() {
     armies: () => Object.values(G.s.armies).filter((a) => a.units.length),
     armyMenText: (a) => fmt(armyMen(a)),
     pathMarks: (a, path) => pathTurns(a, path),
+    visible: (pid) => G.s.observer || canSee(G.s.player, pid),
+    knownRegions: () => (G.s.observer ? knownRegions(null) : knownRegions(G.s.player)),
   };
 }
 
@@ -57,6 +60,7 @@ function provColor(pid, mode) {
   const p = s.provinces[pid];
   const f = s.factions[p.owner];
   const rgb = (hex, a) => [...hexToRgb(hex), a];
+  if (!s.observer && !canSee(s.player, pid)) return null;
   switch (mode) {
     case 'terrain': return rgb(TERRAINS[pdef(pid).terrain].color, 170);
     case 'religion': {
@@ -402,7 +406,7 @@ export async function startOfTurn(startLog) {
   refreshAll();
   saveAuto();
   // Bericht
-  const entries = s.log.slice(startLog ?? s.log.length).filter((e) => e.imp || e.f === s.player);
+  const entries = s.log.slice(startLog ?? s.log.length).filter((e) => (e.imp || e.f === s.player) && screens.logVisible(e));
   if (entries.length) await screens.turnReport(entries);
   // Anstehende Ereignisse und Angebote
   while (s.pending.length) {

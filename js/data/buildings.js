@@ -137,6 +137,7 @@ const TEMPLE_NAMES = {
   iranian: [{ de: 'Feuertempel', tr: 'Ateşgede' }, { de: 'Großer Feuertempel', tr: 'Büyük Ateşgede' }, { de: 'Heiliges Feuer', tr: 'Kutsal Ateş' }],
   abrahamic: [{ de: 'Synagoge', tr: 'Sinagog' }, { de: 'Lehrhaus', tr: 'Yeşiva' }, { de: 'Große Synagoge', tr: 'Büyük Sinagog' }],
   pagan: [{ de: 'Ongun-Schrein', tr: 'Ongun Tapınağı' }, { de: 'Heiliger Hain', tr: 'Iduk Yer' }, { de: 'Kam-Heiligtum', tr: 'Kam Mabedi' }],
+  sinic: [{ de: 'Ahnenhalle', tr: 'Ata Salonu' }, { de: 'Konfuziustempel', tr: 'Konfüçyüs Tapınağı' }, { de: 'Kaiserliche Akademie', tr: 'İmparatorluk Akademisi' }],
 };
 
 const SCHOOL_NAMES = {

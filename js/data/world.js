@@ -26,6 +26,7 @@ export const RELIGIONS = {
   hindu:       { n: { de: 'Hinduismus', tr: 'Hinduizm' }, group: 'dharmic', color: '#ff7f50' },
   jewish:      { n: { de: 'Judentum', tr: 'Yahudilik' }, group: 'abrahamic', color: '#2980b9' },
   pagan:       { n: { de: 'Naturreligionen', tr: 'Doğa Dinleri' }, group: 'pagan', color: '#7f8c6d' },
+  confucian:   { n: { de: 'Konfuzianismus', tr: 'Konfüçyüsçülük' }, group: 'sinic', color: '#b03060' },
 };
 
 // Gegenseitige Einstellung von Religionen (Beziehungsmodifikator)
@@ -35,7 +36,8 @@ export function religionAffinity(a, b) {
   const pair = [a, b].sort().join('|');
   const special = {
     'shia|sunni': -15, 'ismaili|sunni': -25, 'ismaili|shia': -10,
-    'catholic|orthodox': -5, 'miaphysite|orthodox': -5,
+    'catholic|orthodox': -5, 'miaphysite|orthodox': -5, 'catholic|miaphysite': -5,
+    'buddhist|confucian': 5, 'confucian|tengri': -5, 'buddhist|hindu': 0,
   };
   if (special[pair] !== undefined) return special[pair];
   if (ga === gb) return 5;
@@ -58,6 +60,23 @@ export const CULTURES = {
   latin:    { n: { de: 'Fränkisch', tr: 'Frenk' }, group: 'european', color: '#bdc3c7' },
   indian:   { n: { de: 'Indisch', tr: 'Hint' }, group: 'indian', color: '#e67e22' },
   nubian:   { n: { de: 'Nubisch', tr: 'Nubyalı' }, group: 'african', color: '#6e2c00' },
+  german:   { n: { de: 'Deutsch', tr: 'Alman' }, group: 'european', color: '#7f8c8d' },
+  italian:  { n: { de: 'Italienisch', tr: 'İtalyan' }, group: 'european', color: '#a3816a' },
+  iberian:  { n: { de: 'Iberisch', tr: 'İber' }, group: 'european', color: '#c49a3c' },
+  anglo:    { n: { de: 'Englisch', tr: 'İngiliz' }, group: 'european', color: '#9c3d54' },
+  gaelic:   { n: { de: 'Gälisch', tr: 'Gal' }, group: 'european', color: '#4e8a5c' },
+  norse:    { n: { de: 'Nordisch', tr: 'İskandinav' }, group: 'european', color: '#4a6fa5' },
+  baltic:   { n: { de: 'Baltisch', tr: 'Baltık' }, group: 'european', color: '#7a8c4a' },
+  magyar:   { n: { de: 'Ungarisch', tr: 'Macar' }, group: 'steppe', color: '#b35a3b' },
+  han:      { n: { de: 'Chinesisch', tr: 'Çinli' }, group: 'sinic', color: '#c0392b' },
+  jurchen:  { n: { de: 'Dschurdschisch', tr: 'Curcen' }, group: 'steppe', color: '#5b7c99' },
+  tangut:   { n: { de: 'Tangutisch', tr: 'Tangut' }, group: 'tibetan', color: '#8e5f3a' },
+  tibetan:  { n: { de: 'Tibetisch', tr: 'Tibetli' }, group: 'tibetan', color: '#a0522d' },
+  korean:   { n: { de: 'Koreanisch', tr: 'Koreli' }, group: 'sinic', color: '#3d7ea6' },
+  seasian:  { n: { de: 'Südostasiatisch', tr: 'Güneydoğu Asyalı' }, group: 'seasian', color: '#6b8e23' },
+  berber:   { n: { de: 'Berberisch', tr: 'Berberi' }, group: 'semitic', color: '#b7950b' },
+  sudanic:  { n: { de: 'Westafrikanisch', tr: 'Batı Afrikalı' }, group: 'african', color: '#784212' },
+  ethiopian:{ n: { de: 'Äthiopisch', tr: 'Habeş' }, group: 'african', color: '#935116' },
 };
 
 export function cultureAffinity(a, b) {
@@ -94,6 +113,11 @@ export const GOODS = {
   grain:    { n: { de: 'Getreide', tr: 'Tahıl' }, value: 1, icon: '🌾' },
   timber:   { n: { de: 'Holz', tr: 'Kereste' }, value: 1, icon: '🌲' },
   naphtha:  { n: { de: 'Naphtha', tr: 'Neft' }, value: 1.5, icon: '🔥' },
+  porcelain:{ n: { de: 'Porzellan', tr: 'Porselen' }, value: 3, icon: '🏺' },
+  tea:      { n: { de: 'Tee', tr: 'Çay' }, value: 2, icon: '🍵' },
+  wool:     { n: { de: 'Wolle', tr: 'Yün' }, value: 1.5, icon: '🐑' },
+  amber:    { n: { de: 'Bernstein', tr: 'Kehribar' }, value: 2, icon: '🟠' },
+  ivory:    { n: { de: 'Elfenbein', tr: 'Fildişi' }, value: 2.5, icon: '🦷' },
 };
 
 // Handelsrouten: Folge von Provinzen, Wert pro Transitprovinz
@@ -165,6 +189,78 @@ export const TRADE_ROUTES = [
   {
     id: 'khuzistan_road', n: { de: 'Chusistan-Straße', tr: 'Huzistan Yolu' }, value: 1.5,
     path: ['isfahan', 'khuzistan', 'basra'],
+  },
+  {
+    id: 'silk_east', n: { de: 'Seidenstraße (Hexi-Korridor)', tr: 'İpek Yolu (Hexi Koridoru)' }, value: 3,
+    path: ['kaifeng', 'changan', 'ganzhou', 'dunhuang', 'qocho'],
+  },
+  {
+    id: 'tea_horse', n: { de: 'Tee-Pferde-Straße', tr: 'Çay-At Yolu' }, value: 1.5,
+    path: ['sichuan', 'amdo', 'lhasa', 'guge', 'kashmir'],
+  },
+  {
+    id: 'grand_canal', n: { de: 'Kaiserkanal', tr: 'Büyük Kanal' }, value: 2.5,
+    path: ['hangzhou', 'jiangning', 'kaifeng', 'hebei', 'yanjing'],
+  },
+  {
+    id: 'maritime_silk', n: { de: 'Maritime Seidenstraße', tr: 'Deniz İpek Yolu' }, value: 3,
+    path: ['fujian', 'guangzhou', 'champa', 'angkor', 'chola', 'lanka', 'gujarat', 'oman', 'yemen'],
+  },
+  {
+    id: 'steppe_east', n: { de: 'Steppenweg der Kitan', tr: 'Kıtay Bozkır Yolu' }, value: 1.5,
+    path: ['yanjing', 'shangjing', 'kerulen', 'orkhon', 'khovd', 'irtysh'],
+  },
+  {
+    id: 'venetian', n: { de: 'Venezianische Seeroute', tr: 'Venedik Deniz Yolu' }, value: 2.5,
+    path: ['venice', 'apulia', 'epirus', 'morea', 'crete', 'constantinople'],
+  },
+  {
+    id: 'levant_sea', n: { de: 'Levanteroute', tr: 'Doğu Akdeniz Yolu' }, value: 2,
+    path: ['genoa', 'tuscany', 'sicily', 'crete', 'cyprus', 'antioch'],
+  },
+  {
+    id: 'champagne', n: { de: 'Champagnermessen', tr: 'Şampanya Panayırları' }, value: 2,
+    path: ['flanders', 'paris', 'burgundy', 'provence', 'genoa', 'lombardy', 'venice'],
+  },
+  {
+    id: 'amber_road', n: { de: 'Bernsteinstraße', tr: 'Kehribar Yolu' }, value: 1.5,
+    path: ['prussia', 'greater_poland', 'lesser_poland', 'hungary', 'austria', 'venice'],
+  },
+  {
+    id: 'north_sea', n: { de: 'Nordseehandel', tr: 'Kuzey Denizi Ticareti' }, value: 1.5,
+    path: ['norway', 'denmark', 'saxony', 'flanders', 'england'],
+  },
+  {
+    id: 'rus_amber', n: { de: 'Weg von Nowgorod', tr: 'Novgorod Yolu' }, value: 1.5,
+    path: ['livonia', 'novgorod', 'smolensk', 'kiev'],
+  },
+  {
+    id: 'danube_route', n: { de: 'Donauweg', tr: 'Tuna Yolu' }, value: 1.5,
+    path: ['bavaria', 'austria', 'hungary', 'wallachia', 'bulgaria', 'constantinople'],
+  },
+  {
+    id: 'saharan_gold', n: { de: 'Transsahara-Goldroute', tr: 'Sahra Ötesi Altın Yolu' }, value: 3,
+    path: ['mali', 'ghana', 'awdaghust', 'sijilmasa', 'fez', 'cordoba'],
+  },
+  {
+    id: 'saharan_east', n: { de: 'Karawanenweg von Kanem', tr: 'Kanem Kervan Yolu' }, value: 2,
+    path: ['kano', 'kanem', 'fezzan', 'tripolitania', 'ifriqiya'],
+  },
+  {
+    id: 'niger_route', n: { de: 'Nigerstraße', tr: 'Nijer Yolu' }, value: 2,
+    path: ['ife', 'kano', 'gao', 'timbuktu', 'ouargla', 'constantine'],
+  },
+  {
+    id: 'maghreb_road', n: { de: 'Küstenstraße des Maghreb', tr: 'Mağrib Sahil Yolu' }, value: 2,
+    path: ['fez', 'tlemcen', 'constantine', 'ifriqiya', 'tripolitania', 'cyrenaica', 'alexandria'],
+  },
+  {
+    id: 'nile_south', n: { de: 'Weg nach Abessinien', tr: 'Habeşistan Yolu' }, value: 1.5,
+    path: ['upper_egypt', 'nubia', 'alodia', 'axum', 'lasta', 'shewa', 'zeila'],
+  },
+  {
+    id: 'bengal_route', n: { de: 'Gangesweg', tr: 'Ganj Yolu' }, value: 2,
+    path: ['kanauj', 'bengal', 'kalinga', 'vengi', 'chola'],
   },
 ];
 

@@ -3,6 +3,7 @@
 import { WORLD_W, WORLD_H, project, WATER, ISLANDS, WASTELANDS, SEA_LINKS } from '../data/geo.js';
 import { PROVINCES } from '../data/provinces.js';
 import { mulberry32 } from '../util.js';
+import { REGION_IDS } from '../data/regions.js';
 
 export const CELL = 2;
 
@@ -184,7 +185,30 @@ export function generateMap() {
   });
 
   const provIndex = Object.fromEntries(provinces.map((p) => [p.id, p]));
-  return { gw, gh, ids, water, nP, provinces, provIndex, borders, seaLinks, wastelandOffset: nP };
+  const regions = buildRegionGrid(ids, gw, gh, nP);
+  return { gw, gh, ids, water, nP, provinces, provIndex, borders, seaLinks, wastelandOffset: nP, regions, regionIds: REGION_IDS };
+}
+
+// Weltgegend je Zelle: Land nach seinem Kern, Wasser und namenloses Land nach der nächsten Landzelle
+function buildRegionGrid(ids, gw, gh, nP) {
+  const ri = Object.fromEntries(REGION_IDS.map((r, i) => [r, i]));
+  const seedReg = [...PROVINCES.map((p) => ri[p.region || 'orient']), ...WASTELANDS.map((w) => ri[w.r || 'orient'])];
+  const reg = new Uint8Array(gw * gh).fill(255);
+  const q = new Int32Array(gw * gh);
+  let qh = 0, qt = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (id >= 0) { reg[i] = seedReg[id] ?? 0; q[qt++] = i; }
+  }
+  while (qh < qt) {
+    const i = q[qh++];
+    const x = i % gw, r = reg[i];
+    if (x > 0 && reg[i - 1] === 255) { reg[i - 1] = r; q[qt++] = i - 1; }
+    if (x < gw - 1 && reg[i + 1] === 255) { reg[i + 1] = r; q[qt++] = i + 1; }
+    if (i >= gw && reg[i - gw] === 255) { reg[i - gw] = r; q[qt++] = i - gw; }
+    if (i + gw < ids.length && reg[i + gw] === 255) { reg[i + gw] = r; q[qt++] = i + gw; }
+  }
+  return reg;
 }
 
 function buildBorders(ids, gw, gh, nP) {

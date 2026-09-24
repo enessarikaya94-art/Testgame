@@ -1,6 +1,6 @@
 // Zufalls- und Geschichtsereignisse.
 
-import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, rng, log, provName, facName, setOwner, rel, atWar, aliveFactions, neighbors, newId, ROUTES_BY_PROV } from './state.js';
+import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, rng, log, provName, facName, setOwner, rel, atWar, aliveFactions, neighbors, newId, ROUTES_BY_PROV, bumpAlive } from './state.js';
 import { createArmy, convertProvince, clearModCache, getMods } from './economy.js';
 import { createChar, loyalty, generals, civilWar, age, killChar, updateHeir } from './characters.js';
 import { declareWar, makeVassal, makePeace, neighborsOf, militaryPower } from './diplomacy.js';
@@ -10,6 +10,8 @@ import { TECHS } from '../data/techs.js';
 import { FACTIONS } from '../data/factions.js';
 import { RELIGIONS, CULTURES, TERRAINS } from '../data/world.js';
 import { clamp } from '../util.js';
+import { discover, knows, knownRegions, contactByWar, revealToNeighbors } from './discovery.js';
+import { REGIONS, REGION_IDS } from '../data/regions.js';
 
 const d = (de, tr) => ({ de, tr });
 
@@ -23,8 +25,31 @@ function addUnits(fid, pid, list) {
   return a;
 }
 
+// Reisende berichten von fernen Ländern (je nach Weltgegend, aus der sie kommen)
+const TRAVELERS = {
+  orient: [d('Ein armenischer Kaufmann', 'Ermeni bir tüccar'), d('Ein Pilger aus Jerusalem', 'Kudüs\'ten bir hacı'), d('Ein Gesandter aus Konstantinopel', 'Kostantiniyye\'den bir elçi')],
+  europe: [d('Ein venezianischer Kaufmann', 'Venedikli bir tüccar'), d('Benjamin von Tudela', 'Tudelalı Benjamin'), d('Ein normannischer Pilger', 'Norman bir hacı')],
+  east: [d('Ein uigurischer Mönch', 'Uygur bir rahip'), d('Ein Gesandter des Kaiserhofs', 'İmparatorluk sarayından bir elçi'), d('Ein Seidenhändler aus Kaschgar', 'Kaşgarlı bir ipek tüccarı')],
+  africa: [d('Ein Salzhändler aus Sidschilmasa', 'Sicilmaseli bir tuz tüccarı'), d('Ein Pilger aus Kanem', 'Kanemli bir hacı'), d('Ein abessinischer Mönch', 'Habeş bir rahip')],
+};
+
 // ============ Fraktionsereignisse ============
 export const EVENTS = {
+  traveler: {
+    chance: 0.006,
+    cond: (fid) => fac(fid).capital && REGION_IDS.some((r) => !knows(fid, r)),
+    prep: (fid) => { const r = rng().pick(REGION_IDS.filter((x) => !knows(fid, x))); return { region: r, who: REGION_IDS.indexOf(r) * 10 + rng().int(0, TRAVELERS[r].length - 1) }; },
+    title: d('Ein Reisender aus fernen Ländern', 'Uzak Diyarlardan Bir Seyyah'),
+    text: d('{who} ist an unserem Hof eingetroffen. Er berichtet von {region}: von fremden Königen, reichen Städten und seltsamen Sitten. Sollen wir ihn anhören und Gesandte mit ihm zurückschicken?',
+      '{who} sarayımıza geldi. {region} hakkında anlatıyor: yabancı krallardan, zengin şehirlerden ve tuhaf âdetlerden. Onu dinleyip yanında elçiler mi gönderelim?'),
+    params: (ctx) => ({ who: TRAVELERS[ctx.region][ctx.who % 10], region: REGIONS[ctx.region].n }),
+    options: [
+      { t: d('Gesandte mitschicken (60 Gold)', 'Yanında elçiler gönderin (60 altın)'), desc: d('Die Weltgegend wird enthüllt, Ansehen +5', 'Bölge haritada açılır, itibar +5'), ai: 3,
+        ok: (fid) => fac(fid).gold >= 60,
+        fx: (fid, ctx) => { fac(fid).gold -= 60; fac(fid).prestige += 5; discover(fid, ctx.region, 'traveler'); } },
+      { t: d('Nur seine Geschichten anhören', 'Sadece hikâyelerini dinleyin'), desc: d('Forschung +40', 'Araştırma +40'), ai: 1, fx: (fid) => { fac(fid).research.pts += 40; } },
+    ],
+  },
   turkmen: {
     chance: 0.025,
     cond: (fid) => fac(fid).culture === 'turkic' && steppeProvinces(fid).length > 0 && G.s.year < 1250,
@@ -306,6 +331,7 @@ function spawnFaction(fid, o) {
   const f = s.factions[fid];
   f.alive = true;
   f.spawned = true;
+  bumpAlive();
   f.gold = o.gold || 500;
   f.horses = o.horses || 300;
   f.prestige = o.prestige || 50;
@@ -325,7 +351,8 @@ function spawnFaction(fid, o) {
     const g = createChar(fid, { dyn: false, role: 'general', mar: rng().int(6, 9) });
     army.gen = g.id; g.army = army.id;
   }
-  for (const e of o.wars || []) if (s.factions[e]?.alive && e !== fid) { const r = rel(fid, e); r.war = true; r.warStart = s.turn; r.score = {}; }
+  f.known = null;
+  for (const e of o.wars || []) if (s.factions[e]?.alive && e !== fid) { const r = rel(fid, e); r.war = true; r.warStart = s.turn; r.score = {}; contactByWar(fid, e); }
   clearModCache();
 }
 
@@ -372,6 +399,8 @@ export const GLOBAL_EVENTS = {
         wars: [...new Set(targets)],
       });
       if (fac('byzantine').alive) { rel('crusader', 'byzantine').alliance = true; }
+      discover('crusader', 'europe', 'event');
+      for (const p of ['jerusalem', 'antioch', 'edessa', 'tripoli', 'damascus', 'aleppo', 'konya', 'nicaea', 'cilicia', 'egypt', 'baghdad', 'mosul']) discover(prov(p).owner, 'europe', 'crusade');
       log('ev.crusade', {}, { imp: true });
     },
   },
@@ -465,7 +494,7 @@ export const GLOBAL_EVENTS = {
     run: () => {
       const s = G.s;
       s.flags.mongols = true;
-      const base = 'irtysh';
+      const base = prov('kerulen').owner === s.player && prov('orkhon').owner !== s.player ? 'orkhon' : 'kerulen';
       const victim = prov(base).owner;
       spawnFaction('mongol', {
         gold: 1500, horses: 1200, prestige: 150, gov: 'nomad', provinces: [base],
@@ -478,7 +507,7 @@ export const GLOBAL_EVENTS = {
       // Die Uiguren unterwerfen sich
       if (fac('uyghur').alive && G.s.player !== 'uyghur') { fac('uyghur').overlord = 'mongol'; }
       else if (G.s.player === 'uyghur') G.s.pending.push({ type: 'global', id: 'uyghur_submit' });
-      log('ev.mongols', {}, { imp: true });
+      log('ev.mongols', {}, { imp: true, rg: 'east' });
     },
   },
   uyghur_submit: {
@@ -536,6 +565,110 @@ export const GLOBAL_EVENTS = {
       G.s.flags.c4 = true;
       spawnFaction('crusader', { gold: 800, ruler: fac('crusader').alive ? undefined : { n: d('Balduin von Flandern', 'Flandreli Baudouin'), born: 1172, mar: 6, traits: ['ambitious'] }, armies: [{ prov: 'thrace', units: rep(['knights', 'knights', 'sergeants', 'crossbows'], 18) }], wars: ['byzantine'] });
       log('ev.fourthCrusade', {}, { imp: true });
+    },
+  },
+  mongol_china: {
+    when: () => fac('mongol').alive && !G.s.flags.mongolChina && G.s.year >= (G.s.flags.mongolYear || 1208) + 4,
+    run: () => {
+      G.s.flags.mongolChina = true;
+      const targets = ['xingqing', 'yanjing'].map((p) => prov(p).owner).filter((o) => o && o !== 'mongol' && fac(o)?.alive && fac(o).overlord !== 'mongol');
+      const own = factionProvinces('mongol');
+      if (!own.length || !targets.length) return;
+      addUnits('mongol', own[0], rep(['mongol_ha', 'mongol_ha', 'mongol_ha', 'keshig', 'mangonel'], 16));
+      for (const t of targets.slice(0, 1)) if (!atWar('mongol', t)) declareWar('mongol', t);
+      log('ev.mongolChina', { fac: facName(targets[0]) }, { imp: true, rg: 'east' });
+    },
+  },
+  jin_rise: {
+    when: () => G.s.year >= 1114 && G.s.year <= 1125 && !G.s.flags.jinRise && !fac('jin').alive && fac('liao').alive && prov('jurchen').owner !== G.s.player,
+    run: () => {
+      const s = G.s;
+      s.flags.jinRise = true;
+      const old = prov('jurchen').owner;
+      const provs = ['jurchen', ...(prov('liaodong').owner === 'liao' ? ['liaodong'] : [])];
+      spawnFaction('jin', {
+        gold: 700, horses: 600, prestige: 80, gov: 'sultanate', provinces: provs,
+        ruler: { n: d('Wanyan Aguda', 'Wanyan Aguda'), born: 1068, mar: 10, adm: 7, dip: 6, traits: ['strategist', 'ambitious'] },
+        armies: [{ prov: 'jurchen', units: rep(['iron_pagoda', 'horse_archers', 'horse_archers', 'spearmen'], 16) }, { prov: 'jurchen', units: rep(['iron_pagoda', 'horse_archers', 'horse_archers'], 12) }],
+        wars: ['liao'], techs: ['heavy_lancers', 'kurultai'],
+      });
+      if (old && old !== 'jin' && old !== 'liao') checkFactionDeath(old, 'jin');
+      log('ev.jinRise', {}, { imp: true, rg: 'east' });
+    },
+  },
+  jin_south: {
+    when: () => G.s.year >= 1125 && G.s.year <= 1130 && !G.s.flags.jinSouth && fac('jin').alive && fac('song').alive && G.s.player !== 'jin' && !atWar('jin', 'song'),
+    run: () => {
+      G.s.flags.jinSouth = true;
+      const own = factionProvinces('jin');
+      const at = own.find((p) => neighbors(p).some((n) => prov(n).owner === 'song')) || own[0];
+      if (!at) return;
+      addUnits('jin', at, rep(['iron_pagoda', 'horse_archers', 'horse_archers', 'spearmen', 'mangonel'], 18));
+      declareWar('jin', 'song');
+      log('ev.jinSouth', {}, { imp: true, rg: 'east' });
+    },
+  },
+  hilal_invasion: {
+    when: () => G.s.year >= 1050 && G.s.year <= 1057 && !G.s.flags.hilal && G.s.startYear < 1050 && !fac('hilal').alive && prov('cyrenaica').owner !== G.s.player,
+    run: () => {
+      G.s.flags.hilal = true;
+      const old = prov('cyrenaica').owner;
+      const targets = ['cyrenaica', 'tripolitania', 'ifriqiya'].map((p) => prov(p).owner).filter((o) => o && o !== 'hilal');
+      spawnFaction('hilal', {
+        gold: 300, horses: 400, gov: 'nomad', provinces: ['cyrenaica'],
+        ruler: { n: d('Mu’nis ibn Yahya', 'Münis bin Yahya'), born: 1010, mar: 7, traits: ['brave', 'greedy'] },
+        armies: [{ prov: 'cyrenaica', units: rep(['bedouin', 'bedouin', 'camels', 'bedouin'], 16) }],
+        wars: [...new Set(targets)],
+      });
+      if (old && fac(old)?.alive && !factionProvinces(old).length) checkFactionDeath(old, 'hilal');
+      log('ev.hilal', {}, { imp: true, rg: 'africa' });
+    },
+  },
+  almoravid_rise: {
+    when: () => G.s.year >= 1053 && G.s.year <= 1062 && !G.s.flags.almoravid && G.s.startYear < 1050 && !fac('almoravid').alive && prov('awdaghust').owner !== G.s.player,
+    run: () => {
+      G.s.flags.almoravid = true;
+      const provs = ['awdaghust', ...(prov('sijilmasa').owner !== G.s.player ? ['sijilmasa'] : [])];
+      const olds = [...new Set(provs.map((p) => prov(p).owner))];
+      spawnFaction('almoravid', {
+        gold: 400, horses: 300, gov: 'nomad', provinces: provs,
+        ruler: { n: d('Abu Bakr ibn Umar', 'Ebubekir bin Ömer'), born: 1020, mar: 8, adm: 6, traits: ['pious', 'ghazi'] },
+        armies: [{ prov: provs[0], units: rep(['murabitun', 'camels', 'jinetes', 'murabitun'], 14) }],
+        wars: olds, techs: ['sufi'],
+      });
+      fac('almoravid').ai.aggr = 0.85;
+      for (const o of olds) if (o && fac(o)?.alive && !factionProvinces(o).length) checkFactionDeath(o, 'almoravid');
+      log('ev.almoravid', {}, { imp: true, rg: 'africa' });
+    },
+  },
+  almohad_rise: {
+    when: () => G.s.year >= 1121 && G.s.year <= 1147 && !G.s.flags.almohad && !fac('almohad').alive && G.s.startYear < 1121 && prov('marrakesh').owner !== G.s.player && G.s.year >= 1121 + (G.s.flags.almohadDelay ?? (G.s.flags.almohadDelay = rng().int(0, 18))),
+    run: () => {
+      G.s.flags.almohad = true;
+      const old = prov('marrakesh').owner;
+      spawnFaction('almohad', {
+        gold: 500, horses: 300, gov: 'sultanate', provinces: ['marrakesh'],
+        ruler: { n: d('Abd al-Mumin', 'Abdülmü\'min'), born: 1094, mar: 9, adm: 8, dip: 6, traits: ['strategist', 'pious', 'ambitious'] },
+        armies: [{ prov: 'marrakesh', units: rep(['murabitun', 'jinetes', 'archers', 'murabitun', 'camels'], 16) }],
+        wars: [old], techs: ['sufi', 'iqta'],
+      });
+      if (old && fac(old)?.alive && !factionProvinces(old).length) checkFactionDeath(old, 'almohad');
+      log('ev.almohad', {}, { imp: true, rg: 'africa' });
+    },
+  },
+  mali_rise: {
+    when: () => G.s.year >= 1230 && G.s.year <= 1240 && !G.s.flags.mali && G.s.player !== 'mali' && prov('mali').owner !== G.s.player,
+    run: () => {
+      G.s.flags.mali = true;
+      const f = fac('mali');
+      if (!f.alive) spawnFaction('mali', { gold: 500, provinces: ['mali'], ruler: { n: d('Sundiata Keita', 'Sundiata Keita'), born: 1217, mar: 9, adm: 7, dip: 7, traits: ['strategist', 'charismatic'] } });
+      else { f.gold += 500; f.prestige += 40; }
+      const own = factionProvinces('mali');
+      if (!own.length) return;
+      addUnits('mali', own[0], rep(['mande_cav', 'sahel_archers', 'mande_cav', 'spearmen'], 16));
+      const target = prov('ghana').owner;
+      if (target && target !== 'mali' && fac(target)?.alive && !atWar('mali', target)) declareWar('mali', target);
+      log('ev.mali', {}, { imp: true, rg: 'africa' });
     },
   },
 };

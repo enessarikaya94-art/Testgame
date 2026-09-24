@@ -1,6 +1,6 @@
 // Heere: Bewegung, Wegfindung, Belagerung, Plünderung, Versorgung.
 
-import { G, fac, prov, pdef, army, chr, neighbors, atWar, hasAccess, armiesIn, factionProvinces, log, provName, cityName, setOwner, rel, rng, wallBonus, facName } from './state.js';
+import { G, fac, prov, pdef, army, chr, neighbors, atWar, hasAccess, armiesIn, factionProvinces, log, provName, cityName, setOwner, rel, rng, wallBonus, facName, bumpAlive } from './state.js';
 import { TERRAINS, GOVERNMENTS, CULTURES } from '../data/world.js';
 import { UNITS, UNIT_CLASSES, CULTURE_ARMY } from '../data/units.js';
 import { resolveBattle, garrisonUnits } from './battle.js';
@@ -9,6 +9,7 @@ import { stat, killChar } from './characters.js';
 import { clamp } from '../util.js';
 import { specialtyEff } from '../data/specialties.js';
 import { focusEff } from './market.js';
+import { canSee } from './discovery.js';
 
 export const MAX_UNITS = 20;
 
@@ -72,6 +73,7 @@ export function moveCost(from, to) {
 export function canEnter(a, pid) {
   const owner = prov(pid).owner;
   if (owner === a.fac) return true;
+  if (!canSee(a.fac, pid)) return false;
   return hasAccess(a.fac, owner);
 }
 
@@ -349,6 +351,7 @@ export function checkFactionDeath(fid, killer) {
   const men = armies.reduce((x, a) => x + armyMen(a), 0);
   if (men > 1500 && f.spawned && !f.everOwned) return;
   f.alive = false;
+  bumpAlive();
   for (const a of armies) delete s.armies[a.id];
   for (const c of Object.values(s.chars)) if (c.fac === fid) c.alive = false;
   for (const v of Object.values(s.factions)) if (v.overlord === fid) v.overlord = null;
@@ -515,6 +518,11 @@ function rosterForStart(fid, pid) {
   const pc = prov(pid).culture;
   if (pc !== f.culture && CULTURE_ARMY[pc]) list.push(CULTURE_ARMY[pc][0]);
   if (f.gov === 'sultanate' && f.culture === 'turkic') list.push('spearmen', 'archers');
-  if (f.gov === 'nomad' && CULTURES[f.culture].group === 'steppe') return list.filter((u) => UNIT_CLASSES[UNITS[u].cls].cav);
-  return list.filter((u) => !UNITS[u].tech);
+  let out = f.gov === 'nomad' && CULTURES[f.culture].group === 'steppe' ? list.filter((u) => UNIT_CLASSES[UNITS[u].cls].cav) : list.filter((u) => !UNITS[u].tech);
+  // Kleine Mächte beginnen mit bezahlbaren Truppen
+  if (factionProvinces(fid).length <= 2) {
+    const cheap = out.filter((u) => UNITS[u].upkeep <= 1);
+    out = cheap.length ? cheap : ['spearmen', 'archers'];
+  }
+  return out;
 }
