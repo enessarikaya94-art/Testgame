@@ -53,7 +53,8 @@ export function garrisonUnits(pid) {
   const walls = (p.buildings.walls || 0) + wallBonus(pid);
   const f = fac(p.owner);
   const m = getMods(p.owner);
-  const n = clamp(Math.round((2 + walls * 1.5 + p.pop / 80 + (p.buildings.barracks || 0)) * (1 + m.garrison)), 2, 14);
+  const capital = f && f.capital === pid;
+  const n = clamp(Math.round((2 + walls * 1.5 + p.pop / 80 + (p.buildings.barracks || 0)) * (1 + m.garrison) * (capital ? 1.5 : 1)), 2, 18);
   const pool = ['militia', 'militia', 'archers', 'spearmen'];
   const cult = (CULTURE_ARMY[p.culture] || []).filter((u) => !UNIT_CLASSES[UNITS[u].cls].cav && !UNITS[u].tech && !UNITS[u].factions);
   if (cult.length) pool.push(cult[0]);

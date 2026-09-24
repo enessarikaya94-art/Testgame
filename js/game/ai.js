@@ -127,14 +127,22 @@ function aiDiplomacy(f) {
       const theirPow = militaryPower(n) + alliesOf(n).reduce((x, a) => x + militaryPower(a) * 0.5, 0) + (fac(n).overlord ? militaryPower(fac(n).overlord) * 0.6 : 0);
       const ratio = myPow / (theirPow + 1);
       const op = opinion(me, n);
-      let v = ratio - (1.3 - f.ai.aggr * 0.4) - op / 120 - wars * 0.4;
+      // Überlegenheit zählt nur bis zu einem Punkt; lohnende Ziele sind wichtiger als wehrlose
+      let v = Math.min(ratio, 2.5) - (1.3 - f.ai.aggr * 0.4) - op / 120 - wars * 0.4;
+      v += Math.min(0.4, factionProvinces(n).length * 0.05);
+      v -= f.infamy / 80;
       if (n === s.player) v += 0.1 * f.ai.aggr;
       if (RELIGIONS[fac(n).religion].group !== RELIGIONS[f.religion].group) v += 0.15;
       const goals = FACTIONS[me]?.goals || [];
       if (goals.some((g) => g.p && g.p.some((p) => prov(p).owner === n))) v += 0.3;
       if (v > bv) { bv = v; best = n; }
     }
-    if (best && rng().chance(0.15 + f.ai.aggr * 0.5)) declareWar(me, best);
+    if (best && f.infamy > 45 && me !== 'mongol') best = null;
+    if (best) {
+      // Kleine Nachbarn lieber unterwerfen als vernichten
+      if (factionProvinces(best).length <= 2 && best !== s.player && proposalAcceptance('vassalize', me, best) > -25 && rng().chance(0.6)) makeVassal(best, me);
+      else if (rng().chance(0.1 + f.ai.aggr * 0.4)) declareWar(me, best);
+    }
   }
   // Handel & Bündnisse
   const nbs = neighborsOf(me);
@@ -240,7 +248,7 @@ function aiRecruit(f) {
   let desired = Math.round(provs.length * 1.2 + 4 + (enemies.length ? 4 : 0) + threat / 2500);
   desired = Math.min(desired, 12 + provs.length * 2);
   const rich = f.gold > 600 + provs.length * 40;
-  if (rich) desired = Math.round(desired * 1.4);
+  if (rich) desired = Math.round(Math.min(desired * 1.5, 20 + provs.length * 3));
   const upkeepRoom = (f.last?.gross || 30) * 0.75 - (f.last?.upkeep || 0);
   if (units >= desired && !(enemies.length && f.gold > 400)) return;
   if (upkeepRoom < 0 && units >= provs.length && !rich) return;

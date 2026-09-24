@@ -68,6 +68,14 @@ export function declareWar(a, b, opts = {}) {
   if (!opts.noCall) {
     for (const v of vassalsOf(a)) if (v !== b && !atWar(v, b) && v !== G.s.player) joinWar(v, b, a);
   }
+  // Koalition gegen notorische Eroberer
+  if (fa.infamy > 25 && a !== 'rebels') {
+    for (const n of neighborsOf(a)) {
+      if (n === b || n === G.s.player || atWar(n, a) || fac(n).overlord === a || relPeek(a, n)?.alliance) continue;
+      const p = clamp((fa.infamy - 25) / 70, 0, 0.5) * (opinion(n, a) < 0 ? 1 : 0.35);
+      if (rng().chance(p)) { joinWar(n, a, b); log('log.coalition', { a: facName(n), b: fa.n }, { f: n, imp: a === G.s.player }); }
+    }
+  }
   return true;
 }
 

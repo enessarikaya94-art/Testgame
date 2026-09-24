@@ -103,7 +103,7 @@ export function orderBreakdown(pid) {
   if (f.titles.includes('shahanshah') && p.culture === 'persian') title += 5;
   add('ord.titles', title);
   const nprov = factionProvinces(f.id).length;
-  add('ord.overextension', -Math.max(0, nprov - 15) * 0.8);
+  add('ord.overextension', -Math.max(0, nprov - 15) * 0.8 - Math.max(0, nprov - 25) * 0.7);
   if (f.holyWar > 0) add('ord.holyWar', 3);
   const total = parts.reduce((s, x) => s + x[1], 0);
   return { parts, total: clamp(total, 0, 100) };
@@ -190,6 +190,9 @@ export function factionIncome(fid) {
   let levels = 0;
   for (const pid of provs) for (const k in G.s.provinces[pid].buildings) levels += G.s.provinces[pid].buildings[k];
   r.admin = levels * 0.3 + Math.pow(provs.length, 1.3) * 0.5;
+  // Große Schatzkammern verleiten zu Verschwendung und Unterschlagung
+  const cap = 800 + provs.length * 60;
+  if (fac(fid).gold > cap) r.admin += (fac(fid).gold - cap) * 0.1;
   r.research *= (1 + m.research) * gov.researchMult;
   r.net = gross + r.tribute - r.tributePaid - r.upkeep - r.admin;
   r.gross = gross;

@@ -351,6 +351,9 @@ export const GLOBAL_EVENTS = {
       addUnits('seljuk', at, rep(['turkmen', 'horse_archers', 'horse_archers', 'turkmen', 'tarkhan'], 16));
       addUnits('seljuk', at, rep(['turkmen', 'horse_archers', 'horse_archers'], 12));
       f.gold += 400; f.horses += 300; f.prestige += 30;
+      f.ai.aggr = 0.95;
+      const dih = prov('dihistan');
+      if (s.player !== 'seljuk' && dih.owner !== 'seljuk' && dih.owner !== s.player) setOwner('dihistan', 'seljuk');
       const target = prov('merv').owner;
       if (s.player !== 'seljuk' && target !== 'seljuk' && fac(target)?.alive && !atWar('seljuk', target)) declareWar('seljuk', target);
       log('ev.seljukRise', {}, { imp: true });

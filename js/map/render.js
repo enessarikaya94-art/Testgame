@@ -301,15 +301,19 @@ export class MapView {
   }
 
   // ---------- Politische Ebene ----------
-  rebuildOverlay() {
+  rebuildOverlay(force = false) {
     if (!this.game) return;
     const g = this.game;
+    const cols = PROVINCES.map((p) => g.provColor(p.id, this.mode));
+    // Nur neu zeichnen, wenn sich Farben oder Besitzverhältnisse geändert haben
+    const sig = this.mode + '|' + PROVINCES.map((p, i) => g.owner(p.id) + (cols[i] ? cols[i].join(',') : '')).join(';');
+    if (!force && sig === this.overlaySig) return;
+    this.overlaySig = sig;
     const { gw, gh, ids, nP } = this.map;
     const small = document.createElement('canvas');
     small.width = gw; small.height = gh;
     const sctx = small.getContext('2d');
     const img = sctx.createImageData(gw, gh);
-    const cols = PROVINCES.map((p) => g.provColor(p.id, this.mode));
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       if (id < 0 || id >= nP) continue;
@@ -339,6 +343,11 @@ export class MapView {
     }
     ctx.strokeStyle = 'rgba(50,34,20,0.85)'; ctx.lineWidth = 2.2; ctx.stroke(thick);
     this.computeFactionLabels(provOwner);
+    // Grundkarte und Ebene zu einem Bild zusammenfassen (ein drawImage pro Frame)
+    if (!this.composite) { this.composite = document.createElement('canvas'); this.composite.width = WORLD_W; this.composite.height = WORLD_H; }
+    const cctx = this.composite.getContext('2d');
+    cctx.drawImage(this.base, 0, 0);
+    cctx.drawImage(this.overlay, 0, 0);
     this.invalidate();
   }
 
@@ -386,8 +395,7 @@ export class MapView {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(z * dpr, 0, 0, z * dpr, -x * z * dpr, -y * z * dpr);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.base, 0, 0);
-    ctx.drawImage(this.overlay, 0, 0);
+    ctx.drawImage(this.composite || this.base, 0, 0);
     if (!this.game) return;
     const g = this.game;
     // Auswahl
