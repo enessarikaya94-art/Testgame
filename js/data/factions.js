@@ -237,6 +237,18 @@ export const FACTIONS = {
   nizari: F('nizari', 'Nizariten (Assassinen)', 'Nizariler (Haşşaşiler)', '#922b21', 'persian', 'ismaili', 'sedentary', 'elective', { dyn: d('Herren von Alamut', 'Alamut Efendileri'), ai: { aggr: 0.2 } }),
   oman: F('oman', 'Oman', 'Umman', '#16a085', 'arab', 'sunni', 'sedentary', 'elective', { dyn: d('Imame von Oman', 'Umman İmamları'), ai: { aggr: 0.2 } }),
   bedouin: F('bedouin', 'Beduinenstämme', 'Bedevi Kabileleri', '#a9cce3', 'arab', 'sunni', 'nomad', 'elective', { dyn: d('Scheichs', 'Şeyhler'), ai: { aggr: 0.3 } }),
+  // --- Weitere Kleinmächte (nicht spielbar) ---
+  hasanwayhid: F('hasanwayhid', 'Hasanwaihiden', 'Hasanveyhiler', '#b07d56', 'kurdish', 'sunni', 'sedentary', 'seniority', { dyn: d('Hasanwaihiden', 'Hasanveyhi'), ai: { aggr: 0.25 } }),
+  kakuyid: F('kakuyid', 'Kakuyiden', 'Kakuyiler', '#8e5b9e', 'persian', 'shia', 'sedentary', 'seniority', { dyn: d('Kakuyiden', 'Kakuyi'), ai: { aggr: 0.25 } }),
+  numayrid: F('numayrid', 'Numairiden', 'Numeyriler', '#6b8e5a', 'arab', 'shia', 'nomad', 'seniority', { dyn: d('Numairiden', 'Numeyri'), ai: { aggr: 0.3 } }),
+  derbent: F('derbent', 'Emirat Derbent', 'Derbent Emirliği', '#4f7c8a', 'persian', 'sunni', 'sedentary', 'seniority', { dyn: d('Haschimiden', 'Haşimi'), ai: { aggr: 0.2 } }),
+  artsruni: F('artsruni', 'Artsruni (Vaspurakan)', 'Arzruniler (Vaspurakan)', '#d98e3b', 'armenian', 'miaphysite', 'sedentary', 'primogeniture', { dyn: d('Artsruni', 'Arzruni'), ai: { aggr: 0.2 } }),
+  kimek: F('kimek', 'Kimek-Khaganat', 'Kimek Kağanlığı', '#8a9a5b', 'turkic', 'tengri', 'nomad', 'elective', { dyn: d('Kimek-Khane', 'Kimek Hanları'), ai: { aggr: 0.45 } }),
+  bashkirs: F('bashkirs', 'Baschkirische Stämme', 'Başkurt Boyları', '#7a6a8a', 'turkic', 'tengri', 'nomad', 'elective', { dyn: d('Baschkirische Beys', 'Başkurt Beyleri'), ai: { aggr: 0.3 } }),
+  naiman: F('naiman', 'Naimanen', 'Naymanlar', '#5c6f9e', 'mongolic', 'nestorian', 'nomad', 'seniority', { dyn: d('Naimanische Khane', 'Nayman Hanları'), ai: { aggr: 0.4 } }),
+  ammarid: F('ammarid', 'Banu Ammar (Tripolis)', 'Ammaroğulları (Trablus)', '#3f9e8e', 'arab', 'shia', 'sedentary', 'seniority', { dyn: d('Banu Ammar', 'Ammaroğulları'), ai: { aggr: 0.15 } }),
+  makran: F('makran', 'Madaniden von Makran', 'Makran Madanileri', '#a57f5b', 'persian', 'sunni', 'sedentary', 'seniority', { dyn: d('Madaniden', 'Madani'), ai: { aggr: 0.2 } }),
+  turkmen_beys: F('turkmen_beys', 'Turkmenische Beys', 'Türkmen Beyleri', '#5f8f6a', 'turkic', 'sunni', 'nomad', 'elective', { dyn: d('Turkmenen-Beys', 'Türkmen Beyleri'), ai: { aggr: 0.55 } }),
   rebels: F('rebels', 'Aufständische', 'Asiler', '#555555', 'arab', 'sunni', 'sedentary', 'seniority', { ai: { aggr: 0.8 } }),
 };
 

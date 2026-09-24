@@ -116,7 +116,7 @@ function previewAccess() {
 function renderSetup() {
   const sc = SCENARIOS[setup.scenario];
   const present = Object.keys(sc.owners);
-  if (!present.includes(setup.faction)) setup.faction = present.find((f) => FACTIONS[f].major) || present[0];
+  if (!present.includes(setup.faction) || !FACTIONS[setup.faction].major) setup.faction = present.find((f) => FACTIONS[f].major) || present[0];
   previewScenario(setup.scenario);
   const majors = present.filter((f) => FACTIONS[f].major);
   const minors = present.filter((f) => !FACTIONS[f].major);
@@ -136,8 +136,7 @@ function renderSetup() {
     <p class="scen-desc">${esc(L(sc.desc))}</p>
     <h2>${esc(t('setup.faction'))}</h2>
     <div class="flist">${majors.map(item).join('')}</div>
-    <button class="linklike" data-act="minor">${esc(setup.showMinor ? t('setup.hideMinor') : t('setup.showMinor', { n: minors.length }))}</button>
-    ${setup.showMinor ? `<div class="flist minor">${minors.map(item).join('')}</div>` : ''}
+    <p class="muted small">${esc(t('setup.npcNote', { n: minors.length }))}</p>
   </div>
   <div class="setup-detail">
     <h2><span class="swatch" style="background:${fd.color}"></span>${esc(L(fd.n))}</h2>
@@ -180,8 +179,8 @@ function setupMapClick(hit) {
   if (currentScreen !== 'setup' || !hit.prov) return;
   const o = G.s.provinces[hit.prov].owner;
   if (o && o !== 'rebels') {
+    if (!FACTIONS[o]?.major) { toast(t('setup.notPlayable', { fac: L(FACTIONS[o]?.n || '') })); return; }
     setup.faction = o;
-    if (!FACTIONS[o].major) setup.showMinor = true;
     renderSetup();
   }
 }

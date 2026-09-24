@@ -3,7 +3,7 @@
 import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, armiesIn, atWar, enemiesOf, neighbors, opinion, relPeek, rel, rng, aliveFactions, log, ROUTES_BY_PROV } from './state.js';
 import { getMods, buildOptions, startBuilding, techAvailable, recruitOptions, recruit, rosterFor, clearModCache } from './economy.js';
 import { armyPower, garrisonPower, reach, pathFrom, moveArmy, assault, isCavalryOnly, mergeArmies, assignGeneral, effectiveWalls } from './military.js';
-import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, makeVassal, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, alliesOf } from './diplomacy.js';
+import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, makeVassal, demandTribute, tributeAmount, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, alliesOf } from './diplomacy.js';
 import { generals, hireGeneral, hireGeneralCost, age, stat, appointVizier } from './characters.js';
 import { TECHS, techCost } from '../data/techs.js';
 import { UNITS, UNIT_CLASSES } from '../data/units.js';
@@ -154,6 +154,16 @@ function aiDiplomacy(f) {
       if (partner === s.player) {
         if (!s.pending.some((x) => x.from === me)) s.pending.push({ type: 'proposal', kind: 'alliance', from: me });
       } else if (proposalAcceptance('alliance', me, partner) > 0) setAlliance(me, partner);
+    }
+  }
+  // Tribut von schwächeren Nachbarn
+  if (rng().chance(0.06 + f.ai.aggr * 0.08)) {
+    const weak = nbs.filter((n) => n !== 'rebels' && !atWar(me, n) && fac(n).overlord !== me && !(relPeek(me, n)?.tributeTurn && s.turn - relPeek(me, n).tributeTurn < 12) && militaryPower(n) * 2 < myPow)[0];
+    if (weak) {
+      if (weak === s.player) {
+        if (!s.pending.some((x) => x.kind === 'tribute' && x.from === me)) { s.pending.push({ type: 'proposal', kind: 'tribute', from: me, amount: tributeAmount(me, weak) }); rel(me, weak).tributeTurn = s.turn; }
+      } else if (proposalAcceptance('tribute', me, weak) > 0) demandTribute(me, weak);
+      else { rel(me, weak).tributeTurn = s.turn; if (rng().chance(f.ai.aggr * 0.3)) declareWar(me, weak); }
     }
   }
   // Kleine Nachbarn unterwerfen

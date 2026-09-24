@@ -226,6 +226,7 @@ select { font-family: inherit; font-size: 0.9rem; padding: 3px; border: 1px soli
 .tag.trade { background: #1f4e79; }
 .tag.vassal { background: #8a6d1a; }
 .tag.truce { background: #7f8c8d; }
+.tag.npc { background: #6b5b3e; }
 .dhead { display: flex; align-items: center; gap: 8px; }
 .dip-actions { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
 .dact { display: flex; align-items: center; gap: 8px; }

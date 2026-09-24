@@ -183,7 +183,9 @@ export function createGame(scenarioId, playerFid, seed = Date.now() % 1e9, mapDa
   for (const fid of present) {
     const f = F[fid];
     const provs = factionProvinces(fid);
-    f.capital = sc.capitals?.[fid] || provs.slice().sort((a, b) => s.provinces[b].pop - s.provinces[a].pop)[0];
+    const capWanted = sc.capitals?.[fid];
+    f.capital = capWanted && provs.includes(capWanted) ? capWanted : provs.slice().sort((a, b) => s.provinces[b].pop - s.provinces[a].pop)[0];
+    f.npc = !FACTIONS[fid].major;
     f.gold = sc.gold?.[fid] ?? Math.round(100 + provs.length * 25);
     f.horses = 60 + provs.length * 10;
     f.prestige = 20 + provs.length * 3;

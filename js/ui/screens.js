@@ -4,7 +4,7 @@ import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, atWar, relPee
 import { factionIncome, getMods, clearModCache, techAvailable } from '../game/economy.js';
 import { TACTICS } from '../game/battle.js';
 import { goalStatus, ranking, score, refreshCaches } from '../game/turn.js';
-import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, breakAlliance, setNap, makeVassal, releaseVassal, giftGold, marriage, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, acceptCallToArms, vassalsOf } from '../game/diplomacy.js';
+import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, breakAlliance, setNap, makeVassal, releaseVassal, giftGold, marriage, demandTribute, tributeAmount, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, acceptCallToArms, vassalsOf } from '../game/diplomacy.js';
 import { stat, age, loyalty, dynastyMembers, generals, hireGeneral, hireGeneralCost, appointVizier, updateHeir } from '../game/characters.js';
 import { EVENTS, GLOBAL_EVENTS, applyEventChoice, changeReligion } from '../game/events.js';
 import { TECHS, TECH_BRANCHES, techCost } from '../data/techs.js';
@@ -138,10 +138,15 @@ export async function pendingDialog(item) {
     } else if (item.kind === 'trade') text = t('prop.trade', { fac: L(facName(from)) });
     else if (item.kind === 'alliance') text = t('prop.alliance', { fac: L(facName(from)) });
     else if (item.kind === 'sultan') text = t('prop.sultan', { fac: L(facName(from)) });
+    else if (item.kind === 'tribute') text = t('prop.tribute', { fac: L(facName(from)), n: item.amount });
     const ok = await confirmDialog(text, t('prop.accept'), t('prop.decline'));
     if (item.kind === 'peace') { if (ok) makePeace(from, s.player, item.terms || {}); }
     else if (item.kind === 'trade') { if (ok) setTrade(from, s.player, true); else rel(from, s.player).mod -= 5; }
     else if (item.kind === 'alliance') { if (ok) setAlliance(from, s.player); else rel(from, s.player).mod -= 5; }
+    else if (item.kind === 'tribute') {
+      if (ok) { rel(from, s.player).tributeTurn = 0; demandTribute(from, s.player); }
+      else { rel(from, s.player).mod -= 20; if (Math.random() < fac(from).ai.aggr * 0.6) declareWar(from, s.player); }
+    }
     else if (item.kind === 'sultan') {
       if (ok) { fac(from).titles.push('sultan'); rel(from, s.player).mod += 30; fac(s.player).gold += 150; fac(s.player).prestige += 10; log('log.title', { fac: fac(from).n, title: TITLES.sultan.n }, { f: from, imp: true }); }
       else rel(from, s.player).mod -= 30;
@@ -331,6 +336,7 @@ export function diplomacyScreen(initial) {
       if (r?.trade) out.push(`<span class="tag trade">${esc(t('dip.trade'))}</span>`);
       if (fac(fid).overlord === me) out.push(`<span class="tag vassal">${esc(t('dip.vassal'))}</span>`);
       if (fac(me).overlord === fid) out.push(`<span class="tag vassal">${esc(t('dip.overlord'))}</span>`);
+      if (fac(fid).npc) out.push(`<span class="tag npc">${esc(t('dip.npc'))}</span>`);
       if (truceLeft(me, fid) > 0 && !atWar(me, fid)) out.push(`<span class="tag truce">${esc(t('dip.truce'))} ${truceLeft(me, fid)}</span>`);
       return out.join('');
     };
@@ -354,6 +360,7 @@ export function diplomacyScreen(initial) {
         if (!(r?.nap > s.turn)) acts.push(act('nap', '📜 ' + t('dip.proposeNap'), chance(proposalAcceptance('nap', me, selected))));
         if (!(r?.married && s.turn - r.married < 20)) acts.push(act('marriage', '💍 ' + t('dip.marriage'), chance(proposalAcceptance('marriage', me, selected))));
         if (f.overlord !== me && !f.overlord) acts.push(act('vassalize', '👑 ' + t('dip.demandVassal'), chance(proposalAcceptance('vassalize', me, selected))));
+        if (f.overlord !== me && !(r?.tributeTurn && s.turn - r.tributeTurn < 8)) acts.push(act('tribute', '💰 ' + t('dip.demandTribute', { n: tributeAmount(me, selected) }), chance(proposalAcceptance('tribute', me, selected))));
         if (f.overlord === me) acts.push(act('release', '🕊 ' + t('dip.releaseVassal'), ''));
         if (fac(me).overlord === selected) acts.push(act('independence', '⚔ ' + t('dip.independence'), ''));
       }
@@ -362,7 +369,8 @@ export function diplomacyScreen(initial) {
         <table class="kv small">
           <tr><th>${esc(t('fac.ruler'))}</th><td>${ruler ? charBadge(ruler) : '—'}</td></tr>
           <tr><th>${esc(t('fac.religion'))}</th><td>${esc(L(RELIGIONS[f.religion].n))} · ${esc(L(CULTURES[f.culture].n))}</td></tr>
-          <tr><th>${esc(t('fac.gov'))}</th><td>${esc(L(GOVERNMENTS[f.gov].n))}</td></tr>
+          <tr><th>${esc(t('fac.gov'))}</th><td>${esc(L(GOVERNMENTS[f.gov].n))}${f.npc ? ` · <i>${esc(t('dip.npcLong'))}</i>` : ''}</td></tr>
+          <tr><th>${esc(t('dip.gold'))}</th><td>💰 ${fmt(f.gold)}</td></tr>
           <tr><th>${esc(t('dip.provinces'))}</th><td>${factionProvinces(selected).length}</td></tr>
           <tr><th>${esc(t('dip.power'))}</th><td>${powerCompare(militaryPower(me), militaryPower(selected))}</td></tr>
           <tr><th>${esc(t('dip.opinion'))}</th><td>${signed(opinion(me, selected))}</td></tr>
@@ -402,6 +410,11 @@ export function diplomacyScreen(initial) {
         nap: () => tryProp('nap', () => setNap(me(), selected)),
         marriage: () => tryProp('marriage', () => marriage(me(), selected)),
         vassalize: () => tryProp('vassalize', () => makeVassal(selected, me())),
+        tribute: () => {
+          if (proposalAcceptance('tribute', me(), selected) > 0) toast(t('dip.tributePaid', { n: demandTribute(me(), selected) }));
+          else { rel(me(), selected).mod -= 15; rel(me(), selected).tributeTurn = G.s.turn; toast(t('dip.tributeRefused')); }
+          rerender();
+        },
         release: () => { releaseVassal(me(), selected); rerender(); },
         independence: async () => {
           const ok = await confirmDialog(t('dip.independenceConfirm'), t('dip.independence'), t('ui.cancel'));

@@ -159,6 +159,11 @@ export function proposalAcceptance(type, from, to) {
       return (ratio - 3) * 20 + op * 0.5 - n * 3 - (fac(to).prestige / 10) + (neighborsOf(to).includes(from) ? 10 : -30);
     }
     case 'marriage': return op + 10 - (atWar(from, to) ? 999 : 0);
+    case 'tribute': {
+      // "to" soll einmalig Tribut an "from" zahlen
+      if (atWar(from, to) || fac(to).overlord === from) return -999;
+      return (ratio - 1.6) * 35 + op * 0.2 + (neighborsOf(to).includes(from) ? 10 : -25) - (fac(to).ai.aggr * 20);
+    }
     case 'sultan': {
       // Der Kalif (to) verleiht den Sultanstitel an "from"
       return op + (fac(from).overlord === null && fac(to).overlord === from ? 60 : 0) + ratio * 5 + fac(from).prestige / 5 - 20;
@@ -205,6 +210,20 @@ export function giftGold(from, to, amount) {
   rel(from, to).mod += Math.min(40, amount / 8);
   return true;
 }
+export function tributeAmount(from, to) {
+  return Math.max(20, Math.round(Math.min(fac(to).gold * 0.4, 60 + factionProvinces(to).length * 30)));
+}
+export function demandTribute(from, to) {
+  const n = Math.min(tributeAmount(from, to), Math.max(0, Math.round(fac(to).gold)));
+  fac(to).gold -= n;
+  fac(from).gold += n;
+  fac(from).prestige += 3;
+  rel(from, to).mod -= 20;
+  rel(from, to).tributeTurn = G.s.turn;
+  log('log.tribute', { a: facName(to), b: facName(from), n }, { f: from, imp: from === G.s.player || to === G.s.player });
+  return n;
+}
+
 export function marriage(a, b) {
   rel(a, b).mod += 25;
   rel(a, b).married = G.s.turn;
