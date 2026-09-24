@@ -272,6 +272,7 @@ function aiRecruit(f) {
         let w = prefer.includes(o.id) ? 3 : 0.6;
         if (u.cls === 'siege') w = enemies.length ? 0.8 : 0.05;
         if (o.id === 'militia') w = 0.3;
+        if (rich && u.cls !== 'siege') w *= 0.5 + u.cost / 40;
         if (u.cost > f.gold - reserve) w = 0;
         return w;
       });

@@ -17,7 +17,7 @@ import { PROVINCE_BY_ID } from './data/provinces.js';
 
 let map = null, view = null;
 let gameUIReady = false;
-const setup = { scenario: 's1000', faction: 'seljuk', showMinor: false };
+const setup = { scenario: 's1000', faction: 'seljuk', showMinor: false, eventRate: 1 };
 
 async function boot() {
   $('#loading-text').textContent = t('load.map');
@@ -151,6 +151,9 @@ function renderSetup() {
     </table>
     <h3>${esc(t('fac.goals'))}</h3>
     <ul class="goals">${goals.map((g) => `<li>⬜ ${esc(goalLabel(g))}</li>`).join('')}</ul>
+    <h3>${esc(t('setup.events'))}</h3>
+    <div class="policy">${[0, 1, 2].map((v) => `<button data-act="rate" data-v="${v}" class="${setup.eventRate === v ? 'on' : ''}">${esc(t('setup.events' + v))}</button>`).join('')}</div>
+    <p class="muted small">${esc(t('setup.eventsDesc'))}</p>
     <button class="primary big" data-act="start">${esc(t('setup.start'))}</button>
   </div>`;
   const cap = fs.capital;
@@ -173,6 +176,7 @@ delegate($('#setup'), {
   fac: (el) => { setup.faction = el.dataset.f; renderSetup(); },
   minor: () => { setup.showMinor = !setup.showMinor; renderSetup(); },
   start: () => startGame(),
+  rate: (el) => { setup.eventRate = +el.dataset.v; renderSetup(); },
 });
 
 function setupMapClick(hit) {
@@ -198,6 +202,7 @@ function ensureGameUI() {
 
 async function startGame() {
   newGame(setup.scenario, setup.faction, map);
+  G.s.eventRate = setup.eventRate;
   ensureGameUI();
   show('game');
   const cap = fac(G.s.player).capital;

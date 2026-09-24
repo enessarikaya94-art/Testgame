@@ -7,6 +7,7 @@ import { processEconomy, computeDistances, countTrade, clearModCache, orderBreak
 import { processDiplomacy, validateTitles, militaryPower } from './diplomacy.js';
 import { aiTurn } from './ai.js';
 import { rollEvents, runGlobalEvents } from './events.js';
+import { processWorldEvents } from './world-events.js';
 import { SCENARIOS } from '../data/scenarios.js';
 import { FACTIONS, TITLES } from '../data/factions.js';
 
@@ -96,6 +97,7 @@ export async function endTurn(progress) {
     if (s.season === 3) processDiplomacy();
     validateTitles();
     runGlobalEvents();
+    processWorldEvents();
     for (const f of aliveFactions()) rollEvents(f.id);
     for (const f of aliveFactions()) if (f.id !== 'rebels' && !factionProvinces(f.id).length) checkFactionDeath(f.id, null);
     // Zeit

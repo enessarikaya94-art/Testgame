@@ -17,6 +17,7 @@ import { $, $$, delegate, bar, swatch, toast, openModal, modalOpen, closeTopModa
 import { esc, fmt, signed, hexToRgb, clamp } from '../util.js';
 import * as screens from './screens.js';
 import { formatLog } from './format.js';
+import { DISEASES } from '../game/world-events.js';
 import { saveAuto } from './saves.js';
 
 export const UIState = { map: null, tab: 'info', splitSel: new Set(), onExit: null };
@@ -36,7 +37,7 @@ function makeGameAccess() {
       const f = G.s.factions[p.owner];
       return {
         color: f?.color || '#777', pop: p.pop, walls: effectiveWalls(pid), capital: f?.capital === pid,
-        holy: pdef(pid).holy, siege: !!p.siege, revolt: p.order < 20,
+        holy: pdef(pid).holy, siege: !!p.siege, revolt: p.order < 20, plague: !!p.plague, famine: p.famine > 0,
       };
     },
     armies: () => Object.values(G.s.armies).filter((a) => a.units.length),
@@ -395,11 +396,14 @@ function provinceInfo(pid) {
     <tr><th>${esc(t('prov.terrain'))}</th><td>${esc(L(TERRAINS[d.terrain].n))}</td></tr>
     <tr><th>${esc(t('prov.culture'))}</th><td>${swatch(CULTURES[p.culture].color)}${esc(L(CULTURES[p.culture].n))}${p.culture !== f.culture && p.cultProg > 0 ? ` <small>(→ ${esc(L(CULTURES[f.culture].n))} ${Math.round(p.cultProg)}%)</small>` : ''}</td></tr>
     <tr><th>${esc(t('prov.religion'))}</th><td>${rels.map(([r, v]) => `<div class="relrow">${swatch(RELIGIONS[r].color)}${esc(L(RELIGIONS[r].n))} <b>${Math.round(v * 100)}%</b></div>`).join('')}</td></tr>
-    <tr><th>${esc(t('prov.goods'))}</th><td>${d.goods.map((g) => `<span class="good" title="${esc(L(GOODS[g].n))}">${GOODS[g].icon} ${esc(L(GOODS[g].n))}</span>`).join(' ')}</td></tr>
+    <tr><th>${esc(t('prov.goods'))}</th><td>${[...d.goods, ...(p.extraGoods || [])].map((g) => `<span class="good" title="${esc(L(GOODS[g].n))}">${GOODS[g].icon} ${esc(L(GOODS[g].n))}</span>`).join(' ')}</td></tr>
     ${routes.length ? `<tr><th>${esc(t('prov.routes'))}</th><td><small>${routes.map(esc).join('<br>')}</small></td></tr>` : ''}
     <tr><th>${esc(t('prov.walls'))}</th><td>${'▮'.repeat(effectiveWalls(pid)) || '—'} <small>${esc(t('prov.garrison'))} ${Math.round(p.garrison * 100)}%</small></td></tr>
     <tr><th>${esc(t('prov.income'))}</th><td><small>${esc(t('inc.tax'))} ${fmt(inc.tax)} · ${esc(t('inc.goods'))} ${fmt(inc.goods)} · ${esc(t('inc.route'))} ${fmt(inc.route)} · ${esc(t('inc.pasture'))} ${fmt(inc.pasture)}<br>🐎 ${fmt(inc.horses)} · 📜 ${fmt(inc.research)}</small></td></tr>
   </table>`;
+  if (p.plague) html += `<div class="note neg">☠ ${esc(t('prov.plague', { dis: L(DISEASES.find((x) => x.id === p.plague.dis).n), n: p.plague.left }))}</div>`;
+  if (p.famine > 0) html += `<div class="note neg">🌾 ${esc(t('prov.famine', { n: p.famine }))}</div>`;
+  if (p.drought > 0) html += `<div class="note neg">🐄 ${esc(t('prov.drought', { n: p.drought }))}</div>`;
   if (p.devast > 0.05) html += `<div class="note neg">${esc(t('prov.devastated', { n: Math.round(p.devast * 100) }))}</div>`;
   if (p.conquered > 0) html += `<div class="note">${esc(t('prov.recentlyConquered', { n: p.conquered }))}</div>`;
   if (p.siege) html += `<div class="note neg">⚔ ${esc(t('prov.besieged', { fac: L(facName(p.siege.fac)), n: p.siege.turns, m: p.siege.needed }))}</div>`;

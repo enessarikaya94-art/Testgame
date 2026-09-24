@@ -524,6 +524,14 @@ export class MapView {
         ctx.font = `bold ${12 * s}px serif`; ctx.fillStyle = '#8b0000';
         ctx.fillText('⚔', p.x - r - 7 * s, p.y - r - 6 * s);
       }
+      if (info.plague) {
+        ctx.font = `bold ${12 * s}px serif`; ctx.fillStyle = '#5b2a86';
+        ctx.fillText('☠', p.x + r + 4 * s, p.y + 1 * s);
+      }
+      if (info.famine) {
+        ctx.font = `${10 * s}px serif`; ctx.fillStyle = '#8a5a00';
+        ctx.fillText('⚠', p.x - r - 8 * s, p.y + 1 * s);
+      }
       if (info.revolt) {
         ctx.font = `bold ${11 * s}px serif`; ctx.fillStyle = '#b03a2e';
         ctx.fillText('!', p.x + r + 3 * s, p.y - 4 * s);

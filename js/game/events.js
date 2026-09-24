@@ -461,7 +461,7 @@ export const GLOBAL_EVENTS = {
     run: () => foundDelhi(rng().chance(0.3)),
   },
   mongols: {
-    when: () => G.s.year >= 1208 && !G.s.flags.mongols && !fac('mongol').alive,
+    when: () => { const s = G.s; if (!s.flags.mongolYear) s.flags.mongolYear = 1190 + rng().int(0, 35); return s.year >= s.flags.mongolYear && !s.flags.mongols && !fac('mongol').alive && (s.eventRate ?? 1) >= 0; },
     run: () => {
       const s = G.s;
       s.flags.mongols = true;
@@ -491,7 +491,7 @@ export const GLOBAL_EVENTS = {
     ],
   },
   mongol_invasion: {
-    when: () => G.s.year >= 1219 && !G.s.flags.mongolInv && fac('mongol').alive,
+    when: () => G.s.year >= (G.s.flags.mongolYear || 1208) + 11 && !G.s.flags.mongolInv && fac('mongol').alive,
     run: () => {
       const s = G.s;
       s.flags.mongolInv = true;
@@ -507,14 +507,14 @@ export const GLOBAL_EVENTS = {
     },
   },
   mongol_stipend: {
-    when: () => fac('mongol').alive && G.s.year < 1260 && G.s.season === 0,
+    when: () => fac('mongol').alive && G.s.year < (G.s.flags.mongolYear || 1208) + 50 && G.s.season === 0,
     silent: true,
     run: () => {
       const f = fac('mongol');
       f.gold += 250;
       f.horses += 200;
       const own = factionProvinces('mongol');
-      if (own.length && G.s.year < 1250 && factionArmies('mongol').reduce((x, a) => x + a.units.length, 0) < 30) {
+      if (own.length && G.s.year < (G.s.flags.mongolYear || 1208) + 42 && factionArmies('mongol').reduce((x, a) => x + a.units.length, 0) < 30) {
         addUnits('mongol', own[0], rep(['mongol_ha', 'mongol_ha', 'keshig'], 14));
       }
     },

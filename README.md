@@ -27,6 +27,7 @@ Alternativ lässt sich das Repository direkt über **GitHub Pages** veröffentli
 - **Forschungsbaum** mit 36 Technologien in vier Zweigen (Kriegskunst, Verwaltung, Wirtschaft, Kultur und Wissenschaft).
 - **Schlachten mit Taktikwahl**: vorgetäuschte Flucht, Umzingelung, Pfeilhagel, Verteidigung, Hinterhalt, Frontalangriff oder Rückzug. Gelände, Jahreszeit, Truppenmischung und Feldherr zählen. Belagerungen, Sturmangriffe und Raubzüge.
 - **Historische Ereignisse**: Aufstieg der Seldschuken, Kreuzzüge, Nizariten, Kara-Kitai, Zengiden, Saladin, Sultanat Delhi, Mongolensturm, Mamluken. Dazu Zufallsereignisse mit Entscheidungen, etwa Turkmenen, Gelehrte wie Ibn Sina oder Mahmud al-Kaschgari, Seuchen oder das Viehsterben (Dschut).
+- **Unerwartete Weltereignisse** (Häufigkeit wählbar: aus, normal, häufig): Seuchen wie Pest, Pocken und Fleckfieber breiten sich entlang der Handelswege aus. Dazu kommen plötzliche Steppenhorden, Hungersnöte und Heuschreckenplagen, Viehseuchen, Hochwasser, Großbrände, Morde durch Assassinen, überlaufende Feldherren, religiöse Unruhen, neu entdeckte Erzadern und Blütezeiten des Handels. Wann der Mongolensturm losbricht, ist ungewiss (irgendwann zwischen 1190 und 1225).
 - **Computergegner**, die bauen, forschen, rekrutieren, Kriege führen und Frieden schließen.
 - **Speichern** im Browser (5 Plätze und automatischer Spielstand) sowie Export und Import als Datei.
 

@@ -139,7 +139,7 @@ export function createGame(scenarioId, playerFid, seed = Date.now() % 1e9, mapDa
   const s = {
     v: 1, scenario: scenarioId, year: sc.year, season: 0, turn: 1, player: playerFid,
     rngState: seed, nextId: 1, factions: {}, provinces: {}, armies: {}, chars: {}, rel: {}, log: [],
-    flags: {}, pending: [], gameOver: null, startYear: sc.year, observer: playerFid === null,
+    flags: {}, pending: [], gameOver: null, eventRate: 1, startYear: sc.year, observer: playerFid === null,
   };
   G.s = s;
   G.rng = new RNG(seed);

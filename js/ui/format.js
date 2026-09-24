@@ -2,7 +2,7 @@
 
 import { t, L } from '../i18n.js';
 import { buildingName } from '../data/buildings.js';
-import { GOVERNMENTS, SEASONS } from '../data/world.js';
+import { GOVERNMENTS, SEASONS, GOODS } from '../data/world.js';
 
 export function formatLog(e) {
   const p = { ...e.p };
@@ -13,6 +13,7 @@ export function formatLog(e) {
     case 'log.birth': p.child = t(p.female ? 'log.daughter' : 'log.son'); break;
     case 'log.succession': p.minorText = p.minor ? t('log.minor') : ''; break;
     case 'log.destroyed': p.byText = p.by ? t('log.destroyedBy', { by: L(p.by) }) : ''; break;
+    case 'we.vein': p.goodName = L(GOODS[p.good].n); break;
     case 'log.battle': p.kind = t(p.assault ? 'log.assault' : 'log.fieldBattle'); break;
     default: break;
   }

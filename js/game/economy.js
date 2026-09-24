@@ -77,7 +77,9 @@ export function orderBreakdown(pid) {
   const add = (k, v) => { if (Math.abs(v) >= 0.5) parts.push([k, v]); };
   add('ord.base', 45);
   add('ord.mods', m.order);
-  add('ord.buildings', (b.temple || 0) * 3 + (b.palace || 0) * 4 + (b.walls || 0) + (b.school || 0) + ((CULTURES[p.culture].group === 'steppe') ? (b.ordu || 0) * 2 : 0));
+  add('ord.buildings', Math.min(12, (b.temple || 0) * 3 + (b.palace || 0) * 4 + (b.walls || 0) + (b.school || 0) + ((CULTURES[p.culture].group === 'steppe') ? (b.ordu || 0) * 2 : 0)));
+  if (p.plague) add('ord.plague', -10);
+  if (p.famine > 0) add('ord.famine', -12);
   const own = armiesIn(pid).filter((a) => a.fac === f.id).length;
   add('ord.army', Math.min(12, own * 4));
   const tolF = { tolerant: 0.55, normal: 1, strict: 1.3 }[f.policies.tolerance];
@@ -130,12 +132,13 @@ export function provinceIncome(pid) {
   const govTax = steppeLand ? Math.max(gov.taxMult, 0.9) : gov.taxMult;
   const bTax = BUILDINGS.market.eff.tax * (b.market || 0) + BUILDINGS.irrigation.eff.tax * (b.irrigation || 0)
     + BUILDINGS.workshop.eff.tax * (b.workshop || 0) + BUILDINGS.palace.eff.tax * (b.palace || 0);
-  const tax = p.pop * 0.032 * govTax * (1 + m.tax + bTax) * ordF * dev * besieged;
+  const crisis = (p.famine > 0 ? 0.6 : 1) * (p.plague ? 0.75 : 1);
+  const tax = crisis * p.pop * 0.032 * govTax * (1 + m.tax + bTax) * ordF * dev * besieged;
 
   const nTrade = G.tradeCount?.[f.id] || 0;
   const tradeF = (1 + Math.min(0.5, nTrade * 0.08)) * (1 + m.trade + (b.market || 0) * 0.15 + (b.port || 0) * 0.2);
   let goods = 0;
-  for (const g of d.goods) {
+  for (const g of [...d.goods, ...(p.extraGoods || [])]) {
     let v = GOODS[g].value * (1 + m.goods + (b.workshop || 0) * 0.25 + (b.caravanserai || 0) * 0.05 + (b.port || 0) * 0.1);
     if (MINING_GOODS.includes(g)) v *= 1 + m.mining;
     goods += v;
@@ -154,11 +157,12 @@ export function provinceIncome(pid) {
       if (qo !== f.id && atWar(f.id, qo)) safety -= 0.35;
       if (G.s.provinces[q].siege) safety -= 0.15;
     }
-    route += r.value * (1 + m.route + (b.caravanserai || 0) * 0.4) * Math.max(0.2, safety);
+    const boom = G.s.routeBoom?.id === rid ? 1.6 : 1;
+    route += boom * r.value * (1 + m.route + (b.caravanserai || 0) * 0.4) * Math.max(0.2, safety) * (p.plague ? 0.6 : 1);
   }
   route *= 0.6 * tradeF * dev * besieged;
 
-  const pasture = TERRAINS[d.terrain].pasture * (1 + (b.ordu || 0) * 0.25) * (1 - p.devast);
+  const pasture = TERRAINS[d.terrain].pasture * (1 + (b.ordu || 0) * 0.25) * (1 - p.devast) * (p.drought > 0 ? 0.45 : 1);
   const pastureGold = pasture * gov.pastureGold * 1.4;
   const horses = pasture * gov.horsesMult * 0.6 * (1 + m.horses) + (b.stables || 0) * 1.5 + (b.ordu || 0) * 1;
   const research = [0, 0.75, 1.25, 2][b.school || 0] * (1 + m.research) * gov.researchMult;
@@ -191,8 +195,11 @@ export function factionIncome(fid) {
   for (const pid of provs) for (const k in G.s.provinces[pid].buildings) levels += G.s.provinces[pid].buildings[k];
   r.admin = levels * 0.3 + Math.pow(provs.length, 1.3) * 0.5;
   // Große Schatzkammern verleiten zu Verschwendung und Unterschlagung
+  // Prunk des Hofes wächst mit dem Reichtum
+  r.admin += Math.max(0, gross - 250) * 0.15;
   const cap = 800 + provs.length * 60;
-  if (fac(fid).gold > cap) r.admin += (fac(fid).gold - cap) * 0.1;
+  const g = fac(fid).gold;
+  if (g > cap) r.admin += (Math.min(g, cap * 2) - cap) * 0.1 + Math.max(0, g - cap * 2) * 0.2;
   r.research *= (1 + m.research) * gov.researchMult;
   r.net = gross + r.tribute - r.tributePaid - r.upkeep - r.admin;
   r.gross = gross;
