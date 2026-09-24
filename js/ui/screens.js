@@ -4,7 +4,7 @@ import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, atWar, relPee
 import { factionIncome, getMods, clearModCache, techAvailable } from '../game/economy.js';
 import { TACTICS } from '../game/battle.js';
 import { goalStatus, ranking, score, refreshCaches } from '../game/turn.js';
-import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, breakAlliance, setNap, makeVassal, releaseVassal, giftGold, marriage, demandTribute, tributeAmount, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, acceptCallToArms, vassalsOf } from '../game/diplomacy.js';
+import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, breakAlliance, setNap, makeVassal, releaseVassal, giftGold, marriage, demandTribute, tributeAmount, setAccess, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, acceptCallToArms, vassalsOf } from '../game/diplomacy.js';
 import { stat, age, loyalty, dynastyMembers, generals, hireGeneral, hireGeneralCost, appointVizier, updateHeir } from '../game/characters.js';
 import { EVENTS, GLOBAL_EVENTS, applyEventChoice, changeReligion } from '../game/events.js';
 import { TECHS, TECH_BRANCHES, techCost } from '../data/techs.js';
@@ -17,6 +17,9 @@ import { $, openModal, toast, bar, swatch } from './dom.js';
 import { esc, fmt, signed, clamp } from '../util.js';
 import { refreshAll, charBadge, CLASS_ICON, UIState, selectProvince } from './game-ui.js';
 import { formatLog, dateText } from './format.js';
+import { RESOURCES, resourceAccess, paymentBetween, setPayment, takeLoan, LOAN, monopolies } from '../game/market.js';
+import { GOODS } from '../data/world.js';
+import { opinionParts } from '../game/state.js';
 import { SLOTS, saveSlot, slotMeta, exportSave, importSave, loadSlotData } from './saves.js';
 
 // ---------- Allgemein ----------
@@ -248,14 +251,22 @@ export function factionScreen() {
           <tr><th>${esc(t('inc.pasture'))}</th><td>${fmt(inc.pasture)}</td></tr>
           ${inc.tribute ? `<tr><th>${esc(t('inc.tribute'))}</th><td class="pos">+${fmt(inc.tribute)}</td></tr>` : ''}
           ${inc.tributePaid ? `<tr><th>${esc(t('inc.tributePaid'))}</th><td class="neg">−${fmt(inc.tributePaid)}</td></tr>` : ''}
+          ${inc.payIn ? `<tr><th>${esc(t('inc.payIn'))}</th><td class="pos">+${fmt(inc.payIn)}</td></tr>` : ''}
+          ${inc.payOut ? `<tr><th>${esc(t('inc.payOut'))}</th><td class="neg">−${fmt(inc.payOut)}</td></tr>` : ''}
+          ${inc.loans ? `<tr><th>${esc(t('inc.loans'))}</th><td class="neg">−${fmt(inc.loans)}</td></tr>` : ''}
           <tr><th>${esc(t('inc.upkeep'))}</th><td class="neg">−${fmt(inc.upkeep)}</td></tr>
           <tr><th>${esc(t('inc.admin'))}</th><td class="neg">−${fmt(inc.admin)}</td></tr>
           <tr><th><b>${esc(t('inc.net'))}</b></th><td><b class="${inc.net >= 0 ? 'pos' : 'neg'}">${signed(inc.net, 1)}</b></td></tr>
-          <tr><th>🐎 ${esc(t('res.horses'))}</th><td>+${fmt(inc.horses)}</td></tr>
+          <tr><th>🐎 ${esc(t('res.horses'))}</th><td>+${fmt(inc.horses)} <small class="neg">−${fmt(inc.fodder)} ${esc(t('inc.fodder'))}</small></td></tr>
           <tr><th>📜 ${esc(t('res.research'))}</th><td>+${fmt(inc.research)}</td></tr>
         </table>
       </div>
       <div>
+        <h3>${esc(t('fac.economy'))}</h3>
+        <div class="small"><b>${esc(t('dip.resources'))}:</b> ${resList(G.s.player)}</div>
+        <div class="small"><b>${esc(t('mk.monopolies'))}:</b> ${monopolies(G.s.player).map((g) => `${GOODS[g].icon} ${esc(L(GOODS[g].n))}`).join(', ') || '—'}</div>
+        <div class="market">${Object.entries(G.s.market || {}).sort((a, b) => b[1] - a[1]).map(([g, pr]) => `<span class="${pr >= 1.05 ? 'pos' : pr <= 0.95 ? 'neg' : ''}" title="${esc(L(GOODS[g].n))}">${GOODS[g].icon} ${Math.round(pr * 100)}%</span>`).join('')}</div>
+        <div class="decision"><div><b>${esc(t('loan.take', { n: LOAN.amount }))}</b><br><small class="muted">${esc(t('loan.desc', { per: LOAN.per, turns: LOAN.turns }))}${f.loans?.length ? ' · ' + esc(t('loan.open', { n: f.loans.length })) : ''}</small></div>${(f.loans?.length || 0) < LOAN.max ? `<button data-act="loan">${esc(t('dec.do'))}</button>` : `<small class="neg">${esc(t('loan.max'))}</small>`}</div>
         <h3>${esc(t('fac.policies'))}</h3>
         <div class="policy"><span>${esc(t('pol.tax'))}</span>${['low', 'normal', 'high'].map((v) => `<button data-act="pol" data-k="tax" data-v="${v}" class="${f.policies.tax === v ? 'on' : ''}">${esc(t('pol.tax.' + v))}</button>`).join('')}</div>
         <div class="policy"><span>${esc(t('pol.tolerance'))}</span>${['tolerant', 'normal', 'strict'].map((v) => `<button data-act="pol" data-k="tolerance" data-v="${v}" class="${f.policies.tolerance === v ? 'on' : ''}">${esc(t('pol.tol.' + v))}</button>`).join('')}</div>
@@ -282,6 +293,7 @@ export function factionScreen() {
           clearModCache();
           rerender();
         },
+        loan: () => { if (takeLoan(G.s.player)) toast(t('loan.done', { n: LOAN.amount })); rerender(); },
         dec: async (el) => {
           const f = fac(G.s.player);
           const [kind, arg] = el.dataset.id.split(':');
@@ -361,6 +373,14 @@ export function diplomacyScreen(initial) {
         if (!(r?.married && s.turn - r.married < 20)) acts.push(act('marriage', '💍 ' + t('dip.marriage'), chance(proposalAcceptance('marriage', me, selected))));
         if (f.overlord !== me && !f.overlord) acts.push(act('vassalize', '👑 ' + t('dip.demandVassal'), chance(proposalAcceptance('vassalize', me, selected))));
         if (f.overlord !== me && !(r?.tributeTurn && s.turn - r.tributeTurn < 8)) acts.push(act('tribute', '💰 ' + t('dip.demandTribute', { n: tributeAmount(me, selected) }), chance(proposalAcceptance('tribute', me, selected))));
+        if (!r?.access && !r?.alliance) acts.push(act('access', '🚩 ' + t('dip.proposeAccess'), chance(proposalAcceptance('access', me, selected))));
+        else if (r?.access) acts.push(act('unaccess', '✖ ' + t('dip.cancelAccess'), ''));
+        const pay = paymentBetween(me, selected);
+        if (pay) acts.push(`<div class="note">💰 ${esc(pay.from === me ? t('dip.weSubsidize', { n: pay.amount, t: pay.until - s.turn }) : t('dip.theyPay', { n: pay.amount, t: pay.until - s.turn }))}</div>`);
+        else {
+          if (f.overlord !== me) acts.push(act('tributeTreaty', '📜💰 ' + t('dip.demandTributeTreaty', { n: treatyAmount(me, selected) }), chance(proposalAcceptance('tributeTreaty', me, selected))));
+          acts.push(`<div class="giftrow">🤲 ${esc(t('dip.subsidy'))}: ${[5, 10, 20].map((n) => `<button data-act="subsidy" data-n="${n}">${n}/${esc(t('dip.perTurn'))}</button>`).join('')}</div>`);
+        }
         if (f.overlord === me) acts.push(act('release', '🕊 ' + t('dip.releaseVassal'), ''));
         if (fac(me).overlord === selected) acts.push(act('independence', '⚔ ' + t('dip.independence'), ''));
       }
@@ -373,7 +393,8 @@ export function diplomacyScreen(initial) {
           <tr><th>${esc(t('dip.gold'))}</th><td>💰 ${fmt(f.gold)}</td></tr>
           <tr><th>${esc(t('dip.provinces'))}</th><td>${factionProvinces(selected).length}</td></tr>
           <tr><th>${esc(t('dip.power'))}</th><td>${powerCompare(militaryPower(me), militaryPower(selected))}</td></tr>
-          <tr><th>${esc(t('dip.opinion'))}</th><td>${signed(opinion(me, selected))}</td></tr>
+          <tr><th>${esc(t('dip.opinion'))}</th><td><b>${signed(opinion(me, selected))}</b><div class="opparts">${opinionParts(me, selected).map(([k, v]) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${esc(t(k))} ${signed(v)}</span>`).join('')}</div></td></tr>
+          <tr><th>${esc(t('dip.resources'))}</th><td>${resList(selected)}</td></tr>
           ${war ? `<tr><th>${esc(t('dip.warscore'))}</th><td>${signed(warScore(me, selected))}</td></tr>` : ''}
           <tr><th>${esc(t('fac.infamy'))}</th><td>${Math.round(f.infamy)}</td></tr>
           ${f.titles.length ? `<tr><th>${esc(t('fac.titles'))}</th><td>${f.titles.map((x) => esc(L(TITLES[x].n))).join(', ')}</td></tr>` : ''}
@@ -420,10 +441,30 @@ export function diplomacyScreen(initial) {
           const ok = await confirmDialog(t('dip.independenceConfirm'), t('dip.independence'), t('ui.cancel'));
           if (ok) { fac(me()).overlord = null; declareWar(me(), selected); rerender(); }
         },
+        access: () => tryProp('access', () => setAccess(me(), selected, true)),
+        unaccess: () => { setAccess(me(), selected, false); rerender(); },
+        tributeTreaty: () => {
+          if (proposalAcceptance('tributeTreaty', me(), selected) > 0) { setPayment(selected, me(), treatyAmount(me(), selected), 16); fac(me()).prestige += 3; rel(me(), selected).mod -= 15; toast(t('dip.accepted')); }
+          else { rel(me(), selected).mod -= 10; toast(t('dip.refused')); }
+          rerender();
+        },
+        subsidy: (el) => { setPayment(me(), selected, +el.dataset.n, 16); rel(me(), selected).mod += +el.dataset.n; toast(t('dip.subsidyDone')); rerender(); },
         gift: (el) => { if (giftGold(me(), selected, +el.dataset.n)) toast(t('dip.giftDone')); rerender(); },
       };
     },
   });
+}
+
+function resList(fid) {
+  const a = resourceAccess(fid);
+  return Object.entries(RESOURCES).map(([k, r]) => {
+    const st = a.own.has(k) ? 'own' : a.viaTrade.has(k) ? 'trade' : 'none';
+    return `<span class="res-${st}" title="${esc(L(r.desc))}">${r.icon} ${esc(L(r.n))} <small>(${esc(t('resacc.' + st))})</small></span>`;
+  }).join(' ');
+}
+
+function treatyAmount(me, other) {
+  return Math.max(5, Math.round(tributeAmount(me, other) / 8));
 }
 
 function powerCompare(a, b) {
@@ -446,6 +487,7 @@ function peaceDialog(other) {
       ${[100, 250].map((n) => `<button data-act="og" data-n="${n}" class="${terms.goldFrom === me && terms.gold === n ? 'on' : ''}">−${n}</button>`).join('')}</div>
     ${theirBorder.length ? `<h4>${esc(t('peace.demandProv'))}</h4><div class="chips">${theirBorder.map((p) => `<button data-act="tp" data-p="${p}" class="${terms.provinces.includes(p) ? 'on' : ''}">${esc(L(provName(p)))}</button>`).join('')}</div>` : ''}
     ${myBorder.length ? `<h4>${esc(t('peace.offerProv'))}</h4><div class="chips">${myBorder.map((p) => `<button data-act="tp" data-p="${p}" class="${terms.provinces.includes(p) ? 'on' : ''}">${esc(L(provName(p)))}</button>`).join('')}</div>` : ''}
+    <h4>${esc(t('peace.yearly'))}</h4><div class="policy">${[0, 10, 20, 40].map((n) => `<button data-act="py" data-n="${n}" class="${(terms.pay?.from === other && terms.pay.amount === n) || (!n && !terms.pay) ? 'on' : ''}">${n ? '+' + n + '/' + esc(t('dip.perTurn')) : '—'}</button>`).join('')}${[10, 20].map((n) => `<button data-act="po" data-n="${n}" class="${terms.pay?.from === me && terms.pay.amount === n ? 'on' : ''}">−${n}/${esc(t('dip.perTurn'))}</button>`).join('')}</div>
     <h4>${esc(t('peace.vassal'))}</h4><div class="policy"><button data-act="vs" class="${terms.vassal === other ? 'on' : ''}">${esc(t('peace.theyVassal'))}</button></div>
     <p>${esc(t('peace.verdict'))}: ${verdict}</p>
     <div class="actions center"><button class="primary" data-act="send">${esc(t('peace.send'))}</button><button data-act="cancel">${esc(t('ui.cancel'))}</button></div>`;
@@ -458,6 +500,8 @@ function peaceDialog(other) {
         og: (el) => { terms.gold = +el.dataset.n; terms.goldFrom = me; rr(); },
         tp: (el) => { const p = el.dataset.p; const i = terms.provinces.indexOf(p); if (i >= 0) terms.provinces.splice(i, 1); else terms.provinces.push(p); rr(); },
         vs: () => { terms.vassal = terms.vassal ? null : other; rr(); },
+        py: (el) => { const n = +el.dataset.n; terms.pay = n ? { from: other, amount: n, turns: 20 } : null; rr(); },
+        po: (el) => { terms.pay = { from: me, amount: +el.dataset.n, turns: 20 }; rr(); },
         send: () => {
           if (peaceAcceptance(me, other, terms) > 0) { makePeace(me, other, terms); toast(t('dip.accepted')); close(true); }
           else { toast(t('dip.refused')); rr(); }

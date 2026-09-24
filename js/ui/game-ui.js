@@ -2,7 +2,7 @@
 
 import { G, fac, prov, pdef, chr, army, factionProvinces, factionArmies, armiesIn, atWar, relPeek, opinion, facName, provName, aliveFactions, ROUTES_BY_PROV, END_YEAR } from '../game/state.js';
 import { orderBreakdown, provinceIncome, factionIncome, buildOptions, startBuilding, recruitOptions, recruit, recruitLimit, religionShare, getMods, clearModCache } from '../game/economy.js';
-import { findPath, pathTurns, moveArmy, assault, armyMen, armySpeed, mergeArmies, splitArmy, assignGeneral, garrisonPower, armyPower, siegeNeeded, effectiveWalls, isCavalryOnly } from '../game/military.js';
+import { findPath, findRoute, advanceArmy, setStance, STANCES, pathTurns, moveArmy, assault, armyMen, armySpeed, mergeArmies, splitArmy, assignGeneral, garrisonPower, armyPower, siegeNeeded, effectiveWalls, isCavalryOnly } from '../game/military.js';
 import { TACTICS } from '../game/battle.js';
 import { endTurn, isBusy, refreshCaches, goalStatus } from '../game/turn.js';
 import { stat, age, loyalty, generals } from '../game/characters.js';
@@ -18,16 +18,22 @@ import { esc, fmt, signed, hexToRgb, clamp } from '../util.js';
 import * as screens from './screens.js';
 import { formatLog } from './format.js';
 import { DISEASES } from '../game/world-events.js';
+import { specialtiesOf } from '../data/specialties.js';
+import { FOCUS, setFocus, goodPrice, monopolies, RESOURCES } from '../game/market.js';
 import { saveAuto } from './saves.js';
 
 export const UIState = { map: null, tab: 'info', splitSel: new Set(), onExit: null };
 
+export const STANCE_ICON = { normal: '🚶', forced: '💨', intercept: '👁', fortify: '🛡' };
 export const CLASS_ICON = { ha: '🏹', lc: '🐎', hc: '🛡', camel: '🐪', inf: '⚔', spear: '🔱', arch: '🎯', ele: '🐘', siege: '⚙' };
 
 // ---------- Zugriff für die Karte ----------
 function makeGameAccess() {
   return {
     get player() { return G.s.player; },
+    get turn() { return G.s.turn; },
+    hostile: (fid) => atWar(G.s.player, fid),
+    specialties: (pid) => specialtiesOf(pid),
     owner: (pid) => G.s.provinces[pid].owner,
     provColor,
     facShortName: (fid) => (G.s.factions[fid] ? L(G.s.factions[fid].n) : ''),
@@ -58,6 +64,14 @@ function provColor(pid, mode) {
       return rgb(RELIGIONS[r].color, Math.round(70 + share * 110));
     }
     case 'culture': return rgb(CULTURES[p.culture].color, 140);
+    case 'special': {
+      const sp = specialtiesOf(pid);
+      const cnt = { eco: 0, cul: 0, mil: 0 };
+      for (const x of sp) cnt[x.cat]++;
+      const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0];
+      const col = { eco: '#c9a227', cul: '#7b4fa0', mil: '#a8322a' }[top[0]];
+      return rgb(col, 60 + top[1] * 45);
+    }
     case 'order': {
       const o = p.order / 100;
       return [Math.round(200 - o * 150), Math.round(60 + o * 130), 50, 140];
@@ -97,6 +111,8 @@ export function attachMap(map) {
   map.on('click', onMapClick);
   map.on('rightclick', onMapRightClick);
   map.on('hover', onHover);
+  map.on('armyDrag', onArmyDrag);
+  map.on('armyDrop', onArmyDrop);
 }
 
 export function initGameUI(map) {
@@ -129,6 +145,7 @@ export function initGameUI(map) {
       else { clearSelection(); }
     }
     if (e.key === 'Enter' && !modalOpen() && document.body.classList.contains('in-game')) doEndTurn();
+    if ((e.key === 'n' || e.key === 'N') && !modalOpen() && document.body.classList.contains('in-game')) nextArmy();
   });
   renderMapModes();
 }
@@ -172,7 +189,7 @@ export function renderTopbar() {
   document.documentElement.style.setProperty('--tbh', $('#topbar').offsetHeight + 'px');
 }
 
-const MODES = ['political', 'terrain', 'religion', 'culture', 'diplomacy', 'order', 'trade'];
+const MODES = ['political', 'terrain', 'religion', 'culture', 'special', 'diplomacy', 'order', 'trade'];
 function renderMapModes() {
   const m = UIState.map.mode;
   $('#mapmodes').innerHTML = MODES.map((k) => `<button data-act="mode" data-mode="${k}" class="${k === m ? 'on' : ''}">${esc(t('mode.' + k))}</button>`).join('');
@@ -184,6 +201,7 @@ function renderLegend() {
   let html = '';
   if (m === 'religion') html = Object.entries(RELIGIONS).map(([k, r]) => `<span>${swatch(r.color)}${esc(L(r.n))}</span>`).join('');
   else if (m === 'culture') html = Object.entries(CULTURES).map(([k, c]) => `<span>${swatch(c.color)}${esc(L(c.n))}</span>`).join('');
+  else if (m === 'special') html = [['#c9a227', 'spec.eco'], ['#7b4fa0', 'spec.cul'], ['#a8322a', 'spec.mil']].map(([c, k]) => `<span>${swatch(c)}${esc(t(k))}</span>`).join('');
   else if (m === 'terrain') html = Object.entries(TERRAINS).map(([k, c]) => `<span>${swatch(c.color)}${esc(L(c.n))}</span>`).join('');
   else if (m === 'diplomacy') html = [['#c9a227', 'dip.self'], ['#e2c86e', 'dip.vassal'], ['#3c963c', 'dip.ally'], ['#be281e', 'dip.war'], ['#4678b4', 'dip.trade'], ['#969696', 'dip.truce']].map(([c, k]) => `<span>${swatch(c)}${esc(t(k))}</span>`).join('');
   else if (m === 'order') html = `<span>${swatch('#c83c32')}0</span><span>${swatch('#8c8232')}50</span><span>${swatch('#32be32')}100</span>`;
@@ -193,8 +211,26 @@ function renderLegend() {
 }
 
 // ---------- Tooltip ----------
-function onHover(pid, cx, cy) {
+// Nächstes eigenes Heer mit Bewegungspunkten und ohne Marschbefehl
+function nextArmy() {
+  const list = factionArmies(G.s.player).filter((a) => a.units.length && a.mp > 0.01 && !(a.path && a.path.length) && a.stance !== 'fortify' && a.stance !== 'intercept');
+  if (!list.length) { toast(t('ui.noIdleArmies')); return; }
+  const cur = list.findIndex((a) => a.id === UIState.map.sel.army);
+  const a = list[(cur + 1) % list.length];
+  UIState.map.centerOn(a.prov);
+  selectArmy(a.id);
+}
+
+function onHover(pid, cx, cy, hoverArmy) {
   const tip = $('#tooltip');
+  if (hoverArmy && !modalOpen()) {
+    const a = hoverArmy, g = chr(a.gen);
+    tip.innerHTML = `<b>⚑ ${esc(armyTitle(a))}</b><br>${swatch(fac(a.fac).color)}${esc(L(facName(a.fac)))}<br><small>${fmt(armyMen(a))} · ${a.units.length} ${esc(t('army.units'))}${g ? ` · ⚔${stat(g, 'mar')}` : ''}${a.stance && a.stance !== 'normal' ? ` · ${STANCE_ICON[a.stance]} ${esc(t('stance.' + a.stance))}` : ''}</small>`;
+    tip.style.display = 'block';
+    tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, cx + 16) + 'px';
+    tip.style.top = Math.min(window.innerHeight - tip.offsetHeight - 8, cy + 16) + 'px';
+    return;
+  }
   if (!pid || modalOpen()) { tip.style.display = 'none'; return; }
   const p = prov(pid), f = fac(p.owner);
   const armies = armiesIn(pid).filter((a) => a.units.length);
@@ -253,10 +289,12 @@ function onMapClick(hit) {
     if (own && selA.id !== hit.army.id && hit.army.prov === selA.prov) { selectArmy(hit.army.id); return; }
     if (!own || hit.army.prov === selA.prov || !hit.prov) { selectArmy(hit.army.id); return; }
   }
-  if (own && hit.prov && hit.prov !== selA.prov) {
-    // Marschziel festlegen bzw. bestätigen
-    if (m.preview && m.preview.target === hit.prov && m.preview.ok) { issueMove(selA, hit.prov); return; }
-    previewMove(selA, hit.prov);
+  if (own && hit.prov && (hit.prov !== selA.prov || m.preview)) {
+    const pv = m.preview && m.preview.army === selA.id ? m.preview : null;
+    // Ziel bestätigen, Etappe anhängen oder neues Ziel wählen
+    if (pv && pv.ok && pv.target === hit.prov) { issueRoute(selA, pv.waypoints); return; }
+    if (pv && pv.ok && (hit.shift || UIState.waypointMode)) { previewRoute(selA, [...pv.waypoints, hit.prov]); return; }
+    if (hit.prov !== selA.prov) previewRoute(selA, [hit.prov]);
     return;
   }
   if (hit.army) { selectArmy(hit.army.id); return; }
@@ -268,37 +306,60 @@ function onMapRightClick(hit) {
   if (isBusy()) return;
   const m = UIState.map;
   const selA = m.sel.army && army(m.sel.army);
-  if (selA && selA.fac === G.s.player && hit.prov && hit.prov !== selA.prov) issueMove(selA, hit.prov);
+  if (!(selA && selA.fac === G.s.player && hit.prov)) return;
+  const pv = m.preview && m.preview.army === selA.id && m.preview.ok ? m.preview : null;
+  const wps = pv && (hit.shift || UIState.waypointMode) ? [...pv.waypoints, hit.prov] : [hit.prov];
+  if (wps[wps.length - 1] !== selA.prov) issueRoute(selA, wps);
 }
 
-function previewMove(a, target) {
+// Ziehen eines Heeres mit der Maus/dem Finger
+function onArmyDrag(a, pid) {
+  if (isBusy() || a.fac !== G.s.player) return;
   const m = UIState.map;
-  const path = findPath(a, target);
+  if (m.sel.army !== a.id) { m.sel = { prov: a.prov, army: a.id }; UIState.splitSel.clear(); }
+  if (pid && pid !== a.prov && (!m.preview || m.preview.target !== pid)) previewRoute(a, [pid], true);
+}
+function onArmyDrop(a, pid) {
+  if (isBusy() || a.fac !== G.s.player) return;
+  if (pid && pid !== a.prov) issueRoute(a, [pid]);
+  else { UIState.map.preview = null; selectArmy(a.id); }
+}
+
+function previewRoute(a, waypoints, quiet = false) {
+  const m = UIState.map;
+  const path = findRoute(a, waypoints);
+  const target = waypoints[waypoints.length - 1];
   if (!path) {
-    m.preview = { army: a.id, from: a.prov, target, path: [], ok: false };
+    m.preview = { army: a.id, from: a.prov, target, waypoints, path: [], ok: false };
     const o = prov(target).owner;
-    if (o !== a.fac && !atWar(a.fac, o)) toast(t('move.noAccess', { fac: L(facName(o)) }));
-    else toast(t('move.unreachable'));
+    if (!quiet) {
+      if (o !== a.fac && !atWar(a.fac, o)) toast(t('move.noAccess', { fac: L(facName(o)) }));
+      else toast(t('move.unreachable'));
+    }
   } else {
-    m.preview = { army: a.id, from: a.prov, target, path, marks: pathTurns(a, path), ok: true };
+    m.preview = { army: a.id, from: a.prov, target, waypoints, path, marks: pathTurns(a, path), ok: true };
   }
   renderPanel();
   m.invalidate();
 }
 
-export async function issueMove(a, target) {
+export async function issueRoute(a, waypoints) {
   const m = UIState.map;
-  const path = findPath(a, target);
+  const path = findRoute(a, waypoints);
   if (!path) return;
   m.preview = null;
+  UIState.waypointMode = false;
   a.path = path;
-  const res = await moveArmy(a, target);
+  a.waypoints = waypoints.slice();
+  const res = await advanceArmy(a);
   await flushReports();
   if (G.s.armies[a.id]) { m.sel = { prov: G.s.armies[a.id].prov, army: a.id }; }
   else clearSelection();
   refreshAll();
   return res;
 }
+
+export async function issueMove(a, target) { return issueRoute(a, [target]); }
 
 export async function flushReports() {
   const reps = UIState.pendingReports || [];
@@ -334,7 +395,7 @@ export async function startOfTurn(startLog) {
   // Fortsetzen von Marschbefehlen
   for (const a of factionArmies(s.player)) {
     if (a.path && a.path.length && G.s.armies[a.id]) {
-      await moveArmy(a, a.path[a.path.length - 1]);
+      await advanceArmy(a);
       await flushReports();
     }
   }
@@ -396,11 +457,20 @@ function provinceInfo(pid) {
     <tr><th>${esc(t('prov.terrain'))}</th><td>${esc(L(TERRAINS[d.terrain].n))}</td></tr>
     <tr><th>${esc(t('prov.culture'))}</th><td>${swatch(CULTURES[p.culture].color)}${esc(L(CULTURES[p.culture].n))}${p.culture !== f.culture && p.cultProg > 0 ? ` <small>(→ ${esc(L(CULTURES[f.culture].n))} ${Math.round(p.cultProg)}%)</small>` : ''}</td></tr>
     <tr><th>${esc(t('prov.religion'))}</th><td>${rels.map(([r, v]) => `<div class="relrow">${swatch(RELIGIONS[r].color)}${esc(L(RELIGIONS[r].n))} <b>${Math.round(v * 100)}%</b></div>`).join('')}</td></tr>
-    <tr><th>${esc(t('prov.goods'))}</th><td>${[...d.goods, ...(p.extraGoods || [])].map((g) => `<span class="good" title="${esc(L(GOODS[g].n))}">${GOODS[g].icon} ${esc(L(GOODS[g].n))}</span>`).join(' ')}</td></tr>
+    <tr><th>${esc(t('prov.goods'))}</th><td>${[...d.goods, ...(p.extraGoods || [])].map((g) => { const pr = goodPrice(p.owner, g); const mono = monopolies(p.owner).includes(g); return `<span class="good" title="${esc(L(GOODS[g].n))}: ${esc(t('mk.price'))} ${Math.round(pr * 100)}%${mono ? ' · ' + esc(t('mk.monopoly')) : ''}">${GOODS[g].icon} ${esc(L(GOODS[g].n))} <small class="${pr >= 1.05 ? 'pos' : pr <= 0.95 ? 'neg' : 'muted'}">${pr >= 1.05 ? '▲' : pr <= 0.95 ? '▼' : '●'}${mono ? '👑' : ''}</small></span>`; }).join(' ')}</td></tr>
     ${routes.length ? `<tr><th>${esc(t('prov.routes'))}</th><td><small>${routes.map(esc).join('<br>')}</small></td></tr>` : ''}
     <tr><th>${esc(t('prov.walls'))}</th><td>${'▮'.repeat(effectiveWalls(pid)) || '—'} <small>${esc(t('prov.garrison'))} ${Math.round(p.garrison * 100)}%</small></td></tr>
     <tr><th>${esc(t('prov.income'))}</th><td><small>${esc(t('inc.tax'))} ${fmt(inc.tax)} · ${esc(t('inc.goods'))} ${fmt(inc.goods)} · ${esc(t('inc.route'))} ${fmt(inc.route)} · ${esc(t('inc.pasture'))} ${fmt(inc.pasture)}<br>🐎 ${fmt(inc.horses)} · 📜 ${fmt(inc.research)}</small></td></tr>
   </table>`;
+  // Regionale Besonderheiten
+  const specs = specialtiesOf(pid);
+  if (specs.length) html = `<div class="specs">${specs.map((sp) => `<div class="spec spec-${sp.cat}" title="${esc(L(sp.desc))}"><span class="spec-ico">${sp.icon}</span><div><b>${esc(L(sp.n))}</b><small>${esc(specEffText(sp))}</small></div></div>`).join('')}</div>` + html;
+  if (p.owner === s.player) {
+    const cur = p.focus || 'none';
+    const locked = p.focusTurn && s.turn - p.focusTurn < 4;
+    html += `<h4>${esc(t('focus.title'))}</h4><div class="focusrow">${Object.entries(FOCUS).map(([k, fo]) => `<button data-act="focus" data-v="${k}" class="${cur === k ? 'on' : ''}" title="${esc(L(fo.desc))}" ${locked && cur !== k ? 'disabled' : ''}>${fo.icon} ${esc(L(fo.n))}</button>`).join('')}</div>
+      <div class="muted small">${esc(L(FOCUS[cur].desc))}${locked ? ' · ' + esc(t('focus.locked', { n: 4 - (s.turn - p.focusTurn) })) : ''}</div>`;
+  }
   if (p.plague) html += `<div class="note neg">☠ ${esc(t('prov.plague', { dis: L(DISEASES.find((x) => x.id === p.plague.dis).n), n: p.plague.left }))}</div>`;
   if (p.famine > 0) html += `<div class="note neg">🌾 ${esc(t('prov.famine', { n: p.famine }))}</div>`;
   if (p.drought > 0) html += `<div class="note neg">🐄 ${esc(t('prov.drought', { n: p.drought }))}</div>`;
@@ -417,6 +487,32 @@ function provinceInfo(pid) {
     html += `<div class="actions"><button data-act="dipWith" data-fac="${p.owner}">🤝 ${esc(t('ui.diplomacy'))}</button></div>`;
   }
   return html;
+}
+
+export function specEffText(sp) {
+  const e = sp.eff, out = [];
+  const pct = (v) => (v > 0 ? '+' : '') + Math.round(v * 100) + '%';
+  if (e.tax) out.push(`${t('inc.tax')} ${pct(e.tax)}`);
+  if (e.goods) out.push(`${t('inc.goods')} ${pct(e.goods)}`);
+  if (e.route) out.push(`${t('inc.route')} ${pct(e.route)}`);
+  if (e.flat) out.push(`+${e.flat} 💰`);
+  if (e.research) out.push(`+${e.research} 📜`);
+  if (e.horses) out.push(`+${e.horses} 🐎`);
+  if (e.cap) out.push(`${t('prov.pop')} ${pct(e.cap)}`);
+  if (e.order) out.push(`${t('prov.order')} ${e.order > 0 ? '+' : ''}${e.order}`);
+  if (e.convert) out.push(e.convert > 1 ? t('spec.convertFast') : t('spec.convertSlow'));
+  if (e.prestige) out.push(`⭐ +${e.prestige}`);
+  if (e.supply) out.push(t('spec.supply'));
+  if (e.walls) out.push(`${t('prov.walls')} +${e.walls}`);
+  if (e.garrison) out.push(`${t('prov.garrison')} ${pct(e.garrison)}`);
+  if (e.defense) out.push(`${t('spec.defense')} ${pct(e.defense)}`);
+  if (e.recruitCost) out.push(`${t('spec.recruitCost')} ${pct(e.recruitCost)}`);
+  if (e.xp) out.push(t('spec.veterans'));
+  if (e.resource) out.push(`${RESOURCES[e.resource].icon} ${L(RESOURCES[e.resource].n)}`);
+  if (e.units) out.push(`⚔ ${e.units.map((u) => L(UNITS[u].n)).join(', ')}`);
+  if (e.hostileAttrition) out.push(t('spec.hostileAttrition'));
+  if (e.turkify) out.push(t('spec.turkify'));
+  return out.join(' · ');
 }
 
 function buildTab(pid) {
@@ -454,8 +550,8 @@ function recruitTab(pid) {
     else if (o.reason === 'r.tech') reason = t('r.tech', { tech: L(TECHS[o.tech].n) });
     else if (o.reason) reason = t(o.reason);
     html += `<div class="opt ${o.ok ? '' : 'dis'}" title="${esc(L(u.desc))}">
-      <div class="opt-main"><span class="ico">${CLASS_ICON[u.cls]}</span><div><b>${esc(L(u.n))}</b> <small class="muted">${esc(L(UNIT_CLASSES[u.cls].n))} · ${u.size}</small><br>${unitStats(u)}</div></div>
-      <div class="opt-side"><small>💰${u.cost}${u.horses ? ' 🐎' + u.horses : ''} · ${esc(t('rec.upkeep'))} ${u.upkeep}</small>
+      <div class="opt-main"><span class="ico">${CLASS_ICON[u.cls]}</span><div><b>${esc(L(u.n))}</b>${o.local ? ` <span class="tag local">${esc(t('rec.local'))}</span>` : ''} <small class="muted">${esc(L(UNIT_CLASSES[u.cls].n))} · ${u.size}</small><br>${unitStats(u)}${o.xp ? ` <span class="xp">${'★'.repeat(o.xp)}</span>` : ''}${o.missing?.length ? `<br><small class="neg">${esc(t('rec.import', { res: o.missing.map((r) => L(RESOURCES[r].n)).join(', ') }))}</small>` : ''}</div></div>
+      <div class="opt-side"><small>💰${o.cost}${o.cost !== u.cost ? ` <s class="muted">${u.cost}</s>` : ''}${u.horses ? ' 🐎' + u.horses : ''} · ${esc(t('rec.upkeep'))} ${u.upkeep}</small>
       ${o.ok ? `<button data-act="recruit" data-u="${o.id}">${esc(t('rec.do'))}</button>` : `<small class="neg">${esc(reason)}</small>`}</div>
     </div>`;
   }
@@ -495,6 +591,14 @@ function armyPanel(a) {
       html += `<select data-change="assignGen"><option value="">${esc(t('army.assign'))}</option>${free.map((c) => `<option value="${c.id}">${esc(L(c.n))} (⚔${stat(c, 'mar')}${c.army ? ' · ' + esc(t('army.busy')) : ''})</option>`).join('')}</select>`;
     }
   }
+  // Haltung
+  if (mine) {
+    const st = a.stance || 'normal';
+    html += `<h4>${esc(t('stance.title'))}</h4><div class="stancerow">${STANCES.map((k) => `<button data-act="stance" data-v="${k}" class="${st === k ? 'on' : ''}" title="${esc(t('stance.' + k + '.desc'))}">${STANCE_ICON[k]} ${esc(t('stance.' + k))}</button>`).join('')}</div>
+      <div class="muted small">${esc(t('stance.' + st + '.desc'))}</div>`;
+  } else if (a.stance && a.stance !== 'normal') {
+    html += `<div class="note">${STANCE_ICON[a.stance]} ${esc(t('stance.' + a.stance))}</div>`;
+  }
   // Marschvorschau
   if (mine && m.preview && m.preview.army === a.id) {
     const pv = m.preview;
@@ -503,13 +607,17 @@ function armyPanel(a) {
       const tp = prov(pv.target);
       const hostile = tp.owner !== a.fac && atWar(a.fac, tp.owner);
       const foes = armiesIn(pv.target).filter((x) => atWar(a.fac, x.fac) && x.units.length);
-      html += `<div class="movebox"><div>➜ <b>${esc(L(pdef(pv.target).n))}</b> – ${esc(t('move.turns', { n }))}</div>
+      const hostileOnWay = pv.path.filter((pid) => prov(pid).owner !== a.fac && atWar(a.fac, prov(pid).owner)).length;
+      html += `<div class="movebox"><div>➜ ${pv.waypoints.map((w, i) => `<b>${esc(L(pdef(w).n))}</b>`).join(' → ')} – ${esc(t('move.turns', { n }))}</div>
         ${foes.length ? `<div class="neg">⚔ ${esc(t('move.battle', { n: fmt(foes.reduce((x, y) => x + armyMen(y), 0)) }))}</div>` : hostile ? `<div class="neg">${esc(t('move.hostile'))}</div>` : ''}
+        ${hostileOnWay > 1 ? `<div class="neg small">${esc(t('move.deepStrike', { n: hostileOnWay }))}</div>` : ''}
         <button class="primary" data-act="march">${esc(t('move.go'))}</button> <button data-act="cancelPreview">${esc(t('ui.cancel'))}</button>
-        <div class="muted small">${esc(t('move.hint'))}</div></div>`;
+        <button data-act="wpMode" class="${UIState.waypointMode ? 'on' : ''}">➕ ${esc(t('move.addStage'))}</button>
+        <div class="muted small">${esc(t(UIState.waypointMode ? 'move.stageHint' : 'move.hint'))}</div></div>`;
     }
   } else if (mine && a.path && a.path.length) {
-    html += `<div class="movebox">➜ ${esc(L(pdef(a.path[a.path.length - 1]).n))} <button data-act="stopMove">${esc(t('move.stop'))}</button></div>`;
+    const wps = (a.waypoints || []).filter((w) => a.path.includes(w));
+    html += `<div class="movebox">➜ ${(wps.length ? wps : [a.path[a.path.length - 1]]).map((w) => esc(L(pdef(w).n))).join(' → ')} <small class="muted">(${esc(t('move.turns', { n: pathTurns(a, a.path).slice(-1)[0] }))})</small> <button data-act="stopMove">${esc(t('move.stop'))}</button></div>`;
   } else if (mine) {
     html += `<div class="muted small hint">${esc(t('move.selectHint'))}</div>`;
   }
@@ -566,6 +674,7 @@ export function charBadge(c, extra = '') {
 const panelHandlers = {
   close: () => clearSelection(),
   tab: (el) => { UIState.tab = el.dataset.tab; renderPanel(); },
+  focus: (el) => { if (setFocus(UIState.map.sel.prov, el.dataset.v)) { clearModCache(); refreshAll(false); } },
   dipWith: (el) => screens.diplomacyScreen(el.dataset.fac),
   selArmy: (el) => selectArmy(el.dataset.id),
   selProv: (el) => { UIState.map.centerOn(el.dataset.p); selectProvince(el.dataset.p); },
@@ -578,7 +687,9 @@ const panelHandlers = {
     const a = recruit(G.s.player, pid, el.dataset.u);
     if (a) { toast(t('rec.done', { u: L(UNITS[el.dataset.u].n) })); refreshAll(false); }
   },
-  march: () => { const pv = UIState.map.preview; const a = army(pv?.army); if (a) issueMove(a, pv.target); },
+  march: () => { const pv = UIState.map.preview; const a = army(pv?.army); if (a) issueRoute(a, pv.waypoints); },
+  wpMode: () => { UIState.waypointMode = !UIState.waypointMode; renderPanel(); },
+  stance: (el) => { const a = army(UIState.map.sel.army); if (a) { setStance(a, el.dataset.v); renderPanel(); UIState.map.invalidate(); } },
   cancelPreview: () => { UIState.map.preview = null; renderPanel(); UIState.map.invalidate(); },
   stopMove: () => { const a = army(UIState.map.sel.army); if (a) a.path = []; renderPanel(); UIState.map.invalidate(); },
   assault: async () => {

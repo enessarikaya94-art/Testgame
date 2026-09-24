@@ -53,13 +53,13 @@ export const UNITS = {
   tarkhan: {
     n: { de: 'Tarchan-Lanzenreiter', tr: 'Tarhan Mızraklı Süvarileri' }, cls: 'hc',
     att: 9, def: 7, rng: 4, cha: 8, mor: 8, size: 60, cost: 80, horses: 14, upkeep: 1.8,
-    req: { b: 'ordu', l: 2 }, cultures: ['turkic'],
+    req: { b: 'ordu', l: 2 }, needs: ['iron'], cultures: ['turkic'],
     desc: { de: 'Gepanzerte Adelsreiter der Steppe mit Lanze und Bogen.', tr: 'Mızrak ve yay taşıyan zırhlı bozkır soyluları.' },
   },
   ghulam: {
     n: { de: 'Ghulam-Garde', tr: 'Gulam Muhafızları' }, cls: 'hc',
     att: 10, def: 9, rng: 6, cha: 8, mor: 9, size: 60, cost: 110, horses: 15, upkeep: 2.4,
-    req: { b: 'barracks', l: 2 }, tech: 'ghulam', relGroup: 'islam', cultures: [],
+    req: { b: 'barracks', l: 2 }, tech: 'ghulam', relGroup: 'islam', needs: ['iron'], cultures: [],
     desc: { de: 'Als Kinder gekaufte, meist türkische Militärsklaven, von Jugend an zu Elitereitern ausgebildet und nur dem Herrscher treu.', tr: 'Çocukken satın alınan, çoğu Türk kökenli askerî köleler. Küçük yaştan seçkin süvari olarak yetiştirilir, yalnızca hükümdara sadıktır.' },
   },
   mongol_ha: {
@@ -71,13 +71,13 @@ export const UNITS = {
   keshig: {
     n: { de: 'Keschig-Garde', tr: 'Keşik Muhafızları' }, cls: 'hc',
     att: 11, def: 9, rng: 7, cha: 9, mor: 10, size: 60, cost: 120, horses: 16, upkeep: 2.5,
-    req: { b: 'ordu', l: 2 }, cultures: ['mongolic'],
+    req: { b: 'ordu', l: 2 }, needs: ['iron'], cultures: ['mongolic'],
     desc: { de: 'Die persönliche Leibwache des Khans.', tr: 'Hanın şahsi muhafız birliği.' },
   },
   persian_cav: {
     n: { de: 'Persische Panzerreiter', tr: 'Esaviré Süvarileri' }, cls: 'hc',
     att: 8, def: 8, rng: 3, cha: 7, mor: 7, size: 60, cost: 80, horses: 14, upkeep: 1.8,
-    req: { b: 'stables', l: 2 }, cultures: ['persian'],
+    req: { b: 'stables', l: 2 }, needs: ['iron'], cultures: ['persian'],
     desc: { de: 'Nachfahren der sasanidischen Asawira, schwer gepanzert.', tr: 'Sasani esavirelerinin torunları, ağır zırhlı.' },
   },
   daylamite: {
@@ -113,31 +113,31 @@ export const UNITS = {
   kataphraktoi: {
     n: { de: 'Kataphrakten', tr: 'Katafraktlar' }, cls: 'hc',
     att: 9, def: 10, rng: 2, cha: 9, mor: 8, size: 60, cost: 100, horses: 15, upkeep: 2.2,
-    req: { b: 'stables', l: 2 }, cultures: ['greek'],
+    req: { b: 'stables', l: 2 }, needs: ['iron'], cultures: ['greek'],
     desc: { de: 'Voll gepanzerte byzantinische Reiter in Keilformation.', tr: 'Kama düzeninde tamamen zırhlı Bizans süvarileri.' },
   },
   skutatoi: {
     n: { de: 'Skutatoi', tr: 'Skutatoi Piyadesi' }, cls: 'spear',
     att: 6, def: 9, rng: 0, cha: 2, mor: 7, size: 120, cost: 40, horses: 0, upkeep: 0.8,
-    req: { b: 'barracks', l: 1 }, cultures: ['greek'],
+    req: { b: 'barracks', l: 1 }, needs: ['iron'], cultures: ['greek'],
     desc: { de: 'Schwere byzantinische Schildträger.', tr: 'Ağır Bizans kalkanlı piyadesi.' },
   },
   varangian: {
     n: { de: 'Warägergarde', tr: 'Varank Muhafızları' }, cls: 'inf',
     att: 11, def: 8, rng: 0, cha: 4, mor: 10, size: 80, cost: 110, horses: 0, upkeep: 2,
-    req: { b: 'barracks', l: 3 }, cultures: ['greek'], factions: ['byzantine'],
+    req: { b: 'barracks', l: 3 }, needs: ['iron'], cultures: ['greek'], factions: ['byzantine'],
     desc: { de: 'Nordische Axtkämpfer, Leibwache des Kaisers.', tr: 'İmparatorun muhafızı olan İskandinav baltacılar.' },
   },
   monaspa: {
     n: { de: 'Monaspa-Reiter', tr: 'Monaspa Süvarileri' }, cls: 'hc',
     att: 9, def: 8, rng: 2, cha: 8, mor: 9, size: 60, cost: 90, horses: 14, upkeep: 2,
-    req: { b: 'stables', l: 2 }, cultures: ['georgian'],
+    req: { b: 'stables', l: 2 }, needs: ['iron'], cultures: ['georgian'],
     desc: { de: 'Die königliche Garde Georgiens.', tr: 'Gürcistan\'ın kraliyet muhafızları.' },
   },
   azat: {
     n: { de: 'Armenische Azat-Reiter', tr: 'Ermeni Azat Süvarileri' }, cls: 'hc',
     att: 8, def: 8, rng: 2, cha: 7, mor: 7, size: 60, cost: 80, horses: 13, upkeep: 1.8,
-    req: { b: 'stables', l: 2 }, cultures: ['armenian', 'alan'],
+    req: { b: 'stables', l: 2 }, needs: ['iron'], cultures: ['armenian', 'alan'],
     desc: { de: 'Armenischer Kriegeradel zu Pferde.', tr: 'Atlı Ermeni savaşçı soyluları.' },
   },
   mountaineers: {
@@ -149,13 +149,13 @@ export const UNITS = {
   druzhina: {
     n: { de: 'Druschina', tr: 'Drujina' }, cls: 'hc',
     att: 8, def: 8, rng: 1, cha: 7, mor: 8, size: 60, cost: 75, horses: 12, upkeep: 1.6,
-    req: { b: 'stables', l: 1 }, cultures: ['slavic'],
+    req: { b: 'stables', l: 1 }, needs: ['iron'], cultures: ['slavic'],
     desc: { de: 'Das Gefolge der Rus-Fürsten.', tr: 'Rus knezlerinin maiyeti.' },
   },
   knights: {
     n: { de: 'Fränkische Ritter', tr: 'Frenk Şövalyeleri' }, cls: 'hc',
     att: 11, def: 10, rng: 0, cha: 11, mor: 9, size: 50, cost: 110, horses: 15, upkeep: 2.4,
-    req: { b: 'stables', l: 1 }, cultures: ['latin'],
+    req: { b: 'stables', l: 1 }, needs: ['iron'], cultures: ['latin'],
     desc: { de: 'Ihr Lanzenangriff ist unaufhaltsam, wenn er gelingt.', tr: 'Mızrak hücumları başarılı olursa durdurulamaz.' },
   },
   sergeants: {
@@ -185,20 +185,50 @@ export const UNITS = {
   mangonel: {
     n: { de: 'Mandschanik', tr: 'Mancınık' }, cls: 'siege',
     att: 1, def: 1, rng: 6, cha: 0, mor: 3, size: 30, cost: 60, horses: 0, upkeep: 1,
-    req: { b: 'barracks', l: 2 }, tech: 'siege_mangonel', cultures: [], siege: 1,
+    req: { b: 'barracks', l: 2 }, tech: 'siege_mangonel', needs: ['timber'], cultures: [], siege: 1,
     desc: { de: 'Zugkatapult. Unverzichtbar gegen Stadtmauern.', tr: 'Çekmeli mancınık. Surlara karşı vazgeçilmez.' },
   },
   naffatun: {
     n: { de: 'Naphtha-Werfer', tr: 'Neffatlar' }, cls: 'siege',
     att: 3, def: 2, rng: 8, cha: 0, mor: 5, size: 40, cost: 70, horses: 0, upkeep: 1.2,
-    req: { b: 'barracks', l: 2 }, tech: 'naphtha', cultures: [], siege: 0.7,
+    req: { b: 'barracks', l: 2 }, tech: 'naphtha', needs: ['naphtha'], cultures: [], siege: 0.7,
     desc: { de: 'Werfen brennendes Naphtha auf Tore und Holzwerke.', tr: 'Kapılara ve ahşap yapılara yanan neft atarlar.' },
   },
   trebuchet: {
     n: { de: 'Gegengewicht-Tribok', tr: 'Karşı Ağırlıklı Mancınık' }, cls: 'siege',
     att: 1, def: 1, rng: 9, cha: 0, mor: 3, size: 30, cost: 100, horses: 0, upkeep: 1.5,
-    req: { b: 'barracks', l: 3 }, tech: 'counterweight', cultures: [], siege: 2,
+    req: { b: 'barracks', l: 3 }, tech: 'counterweight', needs: ['timber'], cultures: [], siege: 2,
     desc: { de: 'Die mächtigste Belagerungsmaschine ihrer Zeit.', tr: 'Çağının en güçlü kuşatma makinesi.' },
+  },
+  ghazi: {
+    n: { de: 'Gazi-Grenzkrieger', tr: 'Gazi Uç Savaşçıları' }, cls: 'lc', local: true,
+    att: 7, def: 4, rng: 6, cha: 5, mor: 9, size: 80, cost: 30, horses: 5, upkeep: 0.6,
+    req: null, cultures: [],
+    desc: { de: 'Glaubenskrieger der Grenzmarken, beutehungrig und furchtlos.', tr: 'Uç bölgelerinin inanç savaşçıları; ganimete aç ve korkusuz.' },
+  },
+  fergana_cav: {
+    n: { de: 'Fergana-Panzerreiter', tr: 'Fergana Zırhlı Süvarileri' }, cls: 'hc', local: true,
+    att: 10, def: 9, rng: 5, cha: 10, mor: 8, size: 60, cost: 95, horses: 12, upkeep: 2,
+    req: { b: 'stables', l: 1, alt: { b: 'ordu', l: 1 } }, cultures: [], needs: ['iron'],
+    desc: { de: 'Auf den edlen Pferden Ferganas – die beste schwere Reiterei Zentralasiens.', tr: 'Fergana\'nın soylu atları üzerinde – Orta Asya\'nın en iyi ağır süvarisi.' },
+  },
+  sistan_archers: {
+    n: { de: 'Sistan-Bogenschützen', tr: 'Sistan Okçuları' }, cls: 'arch', local: true,
+    att: 4, def: 4, rng: 11, cha: 0, mor: 7, size: 100, cost: 40, horses: 0, upkeep: 0.8,
+    req: null, cultures: [],
+    desc: { de: 'Meisterschützen aus den Sümpfen des Hilmend und den Grenzländern.', tr: 'Hilmend bataklıklarından ve uç diyarlarından usta okçular.' },
+  },
+  kipchak_guard: {
+    n: { de: 'Kiptschakische Garde', tr: 'Kıpçak Muhafızları' }, cls: 'ha', local: true,
+    att: 7, def: 6, rng: 10, cha: 6, mor: 8, size: 80, cost: 70, horses: 10, upkeep: 1.4,
+    req: null, cultures: [], needs: ['iron'],
+    desc: { de: 'Gepanzerte Reiterbogenschützen aus der Steppe im Sold reicher Herrscher.', tr: 'Zengin hükümdarların hizmetindeki zırhlı bozkır atlı okçuları.' },
+  },
+  fidai: {
+    n: { de: 'Fidais', tr: 'Fedailer' }, cls: 'inf', local: true,
+    att: 12, def: 3, rng: 0, cha: 5, mor: 12, size: 40, cost: 60, horses: 0, upkeep: 1.2,
+    req: null, cultures: [],
+    desc: { de: 'Todesbereite Gefolgsleute des Alten vom Berge.', tr: 'Dağın Şeyhi\'nin ölüme hazır müritleri.' },
   },
 };
 

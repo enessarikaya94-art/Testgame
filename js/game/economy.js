@@ -9,6 +9,8 @@ import { TITLES } from '../data/factions.js';
 import { stat } from './characters.js';
 import { TRAITS } from '../data/people.js';
 import { clamp } from '../util.js';
+import { specialtyEff } from '../data/specialties.js';
+import { focusEff, goodPrice, hasResource, IMPORT_SURCHARGE, loanPayments, processLoans, treatyFlows, clearResourceCache, clearMarketCache } from './market.js';
 
 export const UPKEEP_SCALE = 2;
 const MINING_GOODS = ['iron', 'copper', 'silver', 'gold', 'gems', 'jade'];
@@ -16,7 +18,7 @@ const ROUTE_BY_ID = Object.fromEntries(TRADE_ROUTES.map((r) => [r.id, r]));
 
 // ---------- Modifikatoren ----------
 const modCache = new Map();
-export function clearModCache() { modCache.clear(); }
+export function clearModCache() { modCache.clear(); clearResourceCache(); clearMarketCache(); }
 
 export function getMods(fid) {
   if (modCache.has(fid)) return modCache.get(fid);
@@ -78,6 +80,9 @@ export function orderBreakdown(pid) {
   add('ord.base', 45);
   add('ord.mods', m.order);
   add('ord.buildings', Math.min(12, (b.temple || 0) * 3 + (b.palace || 0) * 4 + (b.walls || 0) + (b.school || 0) + ((CULTURES[p.culture].group === 'steppe') ? (b.ordu || 0) * 2 : 0)));
+  const se = specialtyEff(pid), fe = focusEff(pid);
+  add('ord.special', se.order || 0);
+  add('ord.focus', fe.order || 0);
   if (p.plague) add('ord.plague', -10);
   if (p.famine > 0) add('ord.famine', -12);
   const own = armiesIn(pid).filter((a) => a.fac === f.id).length;
@@ -133,13 +138,15 @@ export function provinceIncome(pid) {
   const bTax = BUILDINGS.market.eff.tax * (b.market || 0) + BUILDINGS.irrigation.eff.tax * (b.irrigation || 0)
     + BUILDINGS.workshop.eff.tax * (b.workshop || 0) + BUILDINGS.palace.eff.tax * (b.palace || 0);
   const crisis = (p.famine > 0 ? 0.6 : 1) * (p.plague ? 0.75 : 1);
-  const tax = crisis * p.pop * 0.032 * govTax * (1 + m.tax + bTax) * ordF * dev * besieged;
+  const se = specialtyEff(pid), fe = focusEff(pid);
+  const tax = crisis * p.pop * 0.032 * govTax * (1 + m.tax + bTax + (se.tax || 0) + (fe.tax || 0)) * ordF * dev * besieged
+    + ((se.flat || 0) * ordF * dev * besieged);
 
   const nTrade = G.tradeCount?.[f.id] || 0;
   const tradeF = (1 + Math.min(0.5, nTrade * 0.08)) * (1 + m.trade + (b.market || 0) * 0.15 + (b.port || 0) * 0.2);
   let goods = 0;
   for (const g of [...d.goods, ...(p.extraGoods || [])]) {
-    let v = GOODS[g].value * (1 + m.goods + (b.workshop || 0) * 0.25 + (b.caravanserai || 0) * 0.05 + (b.port || 0) * 0.1);
+    let v = GOODS[g].value * goodPrice(f.id, g) * (1 + m.goods + (b.workshop || 0) * 0.25 + (b.caravanserai || 0) * 0.05 + (b.port || 0) * 0.1 + (se.goods || 0) + (fe.goods || 0));
     if (MINING_GOODS.includes(g)) v *= 1 + m.mining;
     goods += v;
   }
@@ -158,14 +165,14 @@ export function provinceIncome(pid) {
       if (G.s.provinces[q].siege) safety -= 0.15;
     }
     const boom = G.s.routeBoom?.id === rid ? 1.6 : 1;
-    route += boom * r.value * (1 + m.route + (b.caravanserai || 0) * 0.4) * Math.max(0.2, safety) * (p.plague ? 0.6 : 1);
+    route += boom * r.value * (1 + m.route + (b.caravanserai || 0) * 0.4 + (se.route || 0) + (fe.route || 0)) * Math.max(0.2, safety) * (p.plague ? 0.6 : 1);
   }
   route *= 0.6 * tradeF * dev * besieged;
 
   const pasture = TERRAINS[d.terrain].pasture * (1 + (b.ordu || 0) * 0.25) * (1 - p.devast) * (p.drought > 0 ? 0.45 : 1);
   const pastureGold = pasture * gov.pastureGold * 1.4;
-  const horses = pasture * gov.horsesMult * 0.6 * (1 + m.horses) + (b.stables || 0) * 1.5 + (b.ordu || 0) * 1;
-  const research = [0, 0.75, 1.25, 2][b.school || 0] * (1 + m.research) * gov.researchMult;
+  const horses = (pasture * gov.horsesMult * 0.6 + (se.horses || 0)) * (1 + m.horses) + (b.stables || 0) * 1.5 + (b.ordu || 0) * 1;
+  const research = ([0, 0.75, 1.25, 2][b.school || 0] + (se.research || 0) * ordF) * (1 + m.research) * gov.researchMult;
   return { tax, goods, route, pasture: pastureGold, horses, research };
 }
 
@@ -201,7 +208,16 @@ export function factionIncome(fid) {
   const g = fac(fid).gold;
   if (g > cap) r.admin += (Math.min(g, cap * 2) - cap) * 0.1 + Math.max(0, g - cap * 2) * 0.2;
   r.research *= (1 + m.research) * gov.researchMult;
-  r.net = gross + r.tribute - r.tributePaid - r.upkeep - r.admin;
+  // Kredite und Zahlungsverträge
+  r.loans = loanPayments(fid);
+  const tf = treatyFlows(fid);
+  r.payIn = tf.inc; r.payOut = tf.out;
+  // Futter für die Reiterei
+  let cav = 0;
+  for (const a of factionArmies(fid)) for (const u of a.units) if (['ha', 'lc', 'hc', 'camel'].includes(UNITS[u.t].cls)) cav++;
+  r.fodder = cav * (f.gov === 'nomad' ? 0.1 : f.gov === 'sultanate' ? 0.2 : 0.3);
+  r.horsesNet = r.horses - r.fodder;
+  r.net = gross + r.tribute - r.tributePaid - r.upkeep - r.admin - r.loans + r.payIn - r.payOut;
   r.gross = gross;
   return r;
 }
@@ -212,7 +228,15 @@ export function processEconomy(fid) {
   const inc = factionIncome(fid);
   f.last = inc;
   f.gold += inc.net;
-  f.horses = Math.min(f.horses + inc.horses, 400 + factionProvinces(fid).length * 60);
+  f.horses = Math.min(f.horses + inc.horsesNet, 400 + factionProvinces(fid).length * 60);
+  if (f.horses < 0) {
+    // Ohne Futter verlieren die Reiter ihre Pferde
+    f.horses = 0;
+    for (const a of factionArmies(fid)) for (const u of a.units) if (['ha', 'lc', 'hc'].includes(UNITS[u.t].cls)) u.hp = Math.max(0.05, u.hp - 0.05);
+    if (fid === G.s.player) log('log.noFodder', {}, { f: fid, imp: true });
+  }
+  processLoans(fid);
+  for (const pid of factionProvinces(fid)) f.prestige += (specialtyEff(pid).prestige || 0) * 0.5;
   const m = getMods(fid);
   f.prestige = Math.max(0, f.prestige * 0.99 + m.prestige * 0.5 + 0.2);
   if (f.gold < 0) {
@@ -264,8 +288,9 @@ function processProvince(pid) {
   // Garnison erholt sich
   p.garrison = Math.min(1, p.garrison + (p.siege ? 0 : 0.15));
   // Bevölkerung
-  const cap = p.basePop * (1.2 + (b.irrigation || 0) * 0.15 + (b.market || 0) * 0.05);
-  const growth = 0.003 + TERRAINS[d.terrain].fert * 0.0008 + (b.irrigation || 0) * 0.001 + m.growth;
+  const se = specialtyEff(pid), fe = focusEff(pid);
+  const cap = p.basePop * (1.2 + (b.irrigation || 0) * 0.15 + (b.market || 0) * 0.05 + (se.cap || 0) + (fe.cap || 0));
+  const growth = (0.003 + TERRAINS[d.terrain].fert * 0.0008 + (b.irrigation || 0) * 0.001 + m.growth + (se.growth || 0)) * (fe.growthMult || 1);
   if (p.pop < cap) p.pop += p.pop * growth * (1 - p.pop / cap) * 4 * (1 - p.devast);
   else p.pop -= (p.pop - cap) * 0.02;
   if (p.siege) p.pop *= 0.985;
@@ -275,6 +300,7 @@ function processProvince(pid) {
   let rate = (0.002 + (b.temple || 0) * 0.003) * (1 + m.convert) * tolF;
   if (RELIGIONS[f.religion].group === 'pagan') rate *= 0.4;
   if (f.religion === 'sunni' && (p.rel.tengri || 0) > 0 && f.techs.includes('sufi')) rate *= 1.5;
+  rate *= (se.convert || 1) * (fe.convertMult || 1);
   convertProvince(p, f.religion, rate);
   // Kultur
   if (p.culture !== f.culture) {
@@ -283,6 +309,7 @@ function processProvince(pid) {
     if (f.culture === 'turkic' && f.gov !== 'sedentary' && pastoral) prog += 0.9;
     if (f.culture === 'turkic' && pastoral) prog += 0.3;
     if (b.ordu) prog += 0.3;
+    if (f.culture === 'turkic') prog += se.turkify || 0;
     if (p.culture === 'turkic' || p.culture === 'mongolic') prog *= 0.5;
     p.cultProg = (p.cultProg || 0) + prog;
     if (p.cultProg >= 100) {
@@ -367,21 +394,40 @@ export function techAvailable(fid, tid) {
 }
 
 // ---------- Rekrutierung ----------
+// Kosten einer Einheit in einer Provinz (regionale Rabatte, Importaufschlag für fehlende Ressourcen)
+export function unitCost(fid, pid, uid) {
+  const u = UNITS[uid];
+  const se = specialtyEff(pid), fe = focusEff(pid);
+  let mult = 1 + (se.recruitCost || 0) + (fe.recruitCost || 0);
+  if (se.units.includes(uid) && uid === 'ghulam') mult -= 0.1;
+  const missing = (u.needs || []).filter((r) => !hasResource(fid, r));
+  if (missing.length) mult += IMPORT_SURCHARGE;
+  const cls = UNITS[uid].cls;
+  const xpc = se.xp || {};
+  const xp = Math.min(3, (xpc.all || 0) + (['ha', 'lc', 'hc', 'camel'].includes(cls) ? xpc.cav || 0 : 0) + (['arch', 'ha'].includes(cls) ? xpc.ranged || 0 : 0) + (['inf', 'spear'].includes(cls) ? xpc.inf || 0 : 0));
+  return { gold: Math.round(u.cost * Math.max(0.5, mult)), horses: u.horses, missing, xp };
+}
+
 export function recruitOptions(fid, pid) {
   const f = fac(fid), p = prov(pid);
+  const se = specialtyEff(pid);
   const out = [];
   for (const [uid, u] of Object.entries(UNITS)) {
     const o = { id: uid, ok: true, reason: null };
+    const local = se.units.includes(uid);
+    if (u.local && !local) continue;
     if (u.factions && !u.factions.includes(fid)) continue;
-    if (u.cultures.length && !u.cultures.includes(f.culture) && !u.cultures.includes(p.culture)) continue;
+    if (!local && u.cultures.length && !u.cultures.includes(f.culture) && !u.cultures.includes(p.culture)) continue;
     if (u.relGroup && RELIGIONS[f.religion].group !== u.relGroup) continue;
-    if (u.req) {
+    const c = unitCost(fid, pid, uid);
+    o.cost = c.gold; o.missing = c.missing; o.xp = c.xp; o.local = local;
+    if (u.req && !local) {
       const okMain = (p.buildings[u.req.b] || 0) >= u.req.l;
       const okAlt = u.req.alt && (p.buildings[u.req.alt.b] || 0) >= u.req.alt.l;
       if (!okMain && !okAlt) { o.ok = false; o.reason = 'r.building'; o.need = u.req; }
     }
-    if (u.tech && !f.techs.includes(u.tech)) { o.ok = false; o.reason = 'r.tech'; o.tech = u.tech; }
-    if (o.ok && f.gold < u.cost) { o.ok = false; o.reason = 'r.gold'; }
+    if (u.tech && !f.techs.includes(u.tech) && !local) { o.ok = false; o.reason = 'r.tech'; o.tech = u.tech; }
+    if (o.ok && f.gold < o.cost) { o.ok = false; o.reason = 'r.gold'; }
     if (o.ok && f.horses < u.horses) { o.ok = false; o.reason = 'r.horses'; }
     if (o.ok && p.siege) { o.ok = false; o.reason = 'r.siege'; }
     if (o.ok && p.recruited >= recruitLimit(pid)) { o.ok = false; o.reason = 'r.limit'; }
@@ -392,19 +438,19 @@ export function recruitOptions(fid, pid) {
 
 export function recruitLimit(pid) {
   const p = prov(pid);
-  return 1 + (p.buildings.barracks || 0) + (p.buildings.ordu || 0) + (p.pop >= 150 ? 1 : 0);
+  return 1 + (p.buildings.barracks || 0) + (p.buildings.ordu || 0) + (p.pop >= 150 ? 1 : 0) + (focusEff(pid).recruit || 0);
 }
 
 export function recruit(fid, pid, uid) {
   const o = recruitOptions(fid, pid).find((x) => x.id === uid);
   if (!o || !o.ok) return null;
   const f = fac(fid), p = prov(pid), u = UNITS[uid];
-  f.gold -= u.cost;
+  f.gold -= o.cost;
   f.horses -= u.horses;
   p.recruited++;
   let a = armiesIn(pid).find((x) => x.fac === fid && x.units.length < 20);
   if (!a) a = createArmy(fid, pid, []);
-  a.units.push({ t: uid, hp: 0.6, xp: 0 });
+  a.units.push({ t: uid, hp: 0.6, xp: o.xp || 0 });
   a.mp = Math.min(a.mp, 0);
   return a;
 }
@@ -422,6 +468,7 @@ export function rosterFor(fid, pid) {
   const f = fac(fid), p = prov(pid);
   const pref = [...(CULTURE_ARMY[f.culture] || CULTURE_ARMY.turkic)];
   if (p && p.culture !== f.culture) pref.push(...(CULTURE_ARMY[p.culture] || []).slice(0, 2));
+  if (p) pref.push(...specialtyEff(pid).units, ...specialtyEff(pid).units);
   return pref.filter((uid) => {
     const u = UNITS[uid];
     if (u.factions && !u.factions.includes(fid)) return false;

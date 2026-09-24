@@ -1,8 +1,9 @@
 // Computergegner
 
-import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, armiesIn, atWar, enemiesOf, neighbors, opinion, relPeek, rel, rng, aliveFactions, log, ROUTES_BY_PROV } from './state.js';
+import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, armiesIn, atWar, enemiesOf, neighbors, opinion, relPeek, rel, rng, aliveFactions, log, ROUTES_BY_PROV, facName } from './state.js';
 import { getMods, buildOptions, startBuilding, techAvailable, recruitOptions, recruit, rosterFor, clearModCache } from './economy.js';
-import { armyPower, garrisonPower, reach, pathFrom, moveArmy, assault, isCavalryOnly, mergeArmies, assignGeneral, effectiveWalls } from './military.js';
+import { armyPower, garrisonPower, reach, pathFrom, moveArmy, assault, isCavalryOnly, mergeArmies, assignGeneral, effectiveWalls, setStance } from './military.js';
+import { setPayment } from './market.js';
 import { declareWar, makePeace, peaceAcceptance, proposalAcceptance, setTrade, setAlliance, makeVassal, demandTribute, tributeAmount, militaryPower, neighborsOf, warScore, truceLeft, titleClaimable, claimTitle, alliesOf } from './diplomacy.js';
 import { generals, hireGeneral, hireGeneralCost, age, stat, appointVizier } from './characters.js';
 import { TECHS, techCost } from '../data/techs.js';
@@ -97,7 +98,8 @@ function aiDiplomacy(f) {
     if (dur < 5) continue;
     const ws = warScore(me, e);
     const terms = {};
-    if (ws > 25) { terms.gold = Math.round(Math.min(fac(e).gold * 0.5, 300)); terms.goldFrom = e; }
+    if (ws > 45 && rng().chance(0.5)) terms.pay = { from: e, amount: Math.max(5, Math.round((fac(e).last?.gross || 40) * 0.12)), turns: 20 };
+    else if (ws > 25) { terms.gold = Math.round(Math.min(fac(e).gold * 0.5, 300)); terms.goldFrom = e; }
     else if (ws < -25 && f.gold > 80) { terms.gold = Math.round(Math.min(f.gold * 0.3, 150)); terms.goldFrom = me; }
     const myWill = peaceAcceptance(e, me, terms);
     if (myWill < -10 && dur < 20) continue;
@@ -170,6 +172,10 @@ function aiDiplomacy(f) {
     if (weak) {
       if (weak === s.player) {
         if (!s.pending.some((x) => x.kind === 'tribute' && x.from === me)) { s.pending.push({ type: 'proposal', kind: 'tribute', from: me, amount: tributeAmount(me, weak) }); rel(me, weak).tributeTurn = s.turn; }
+      } else if (rng().chance(0.5) && proposalAcceptance('tributeTreaty', me, weak) > 0) {
+        setPayment(weak, me, Math.max(5, Math.round(tributeAmount(me, weak) / 8)), 16);
+        rel(me, weak).tributeTurn = s.turn;
+        log('log.tributeTreaty', { a: facName(weak), b: fac(me).n }, { f: me, imp: false });
       } else if (proposalAcceptance('tribute', me, weak) > 0) demandTribute(me, weak);
       else { rel(me, weak).tributeTurn = s.turn; if (rng().chance(f.ai.aggr * 0.3)) declareWar(me, weak); }
     }
@@ -309,6 +315,7 @@ async function aiMilitary(f) {
   const goalProvs = new Set((FACTIONS[me]?.goals || []).flatMap((g) => g.p || []));
   const claimed = {};
   for (const a of armies) {
+    if (a.stance === 'fortify') setStance(a, 'normal');
     if (!s.armies[a.id] || a.mp <= 0) continue;
     const pow = armyPower(a);
     const hp = a.units.reduce((x, u) => x + u.hp, 0) / a.units.length;
@@ -367,14 +374,21 @@ async function aiMilitary(f) {
         if (pick && pick !== a.prov && r.dist[pick] !== undefined) { target = pick; action = 'station'; }
       }
     }
+    let pathLen = 0;
     if (target && target !== a.prov) {
       const path = pathFrom(a, r, target);
       if (path && path.length) {
+        pathLen = path.length;
         claimed[target] = true;
         await moveArmy(a, target);
       }
     }
     if (!s.armies[a.id]) continue;
+    // Haltung für die nächste Runde: Gewaltmarsch zu fernen Zielen, sonst Grenzen überwachen
+    if ((action === 'attack' || action === 'siege') && pathLen > 3 && hp > 0.7) a.stance = 'forced';
+    else if (warTargets.size && (!action || action === 'station' || action === 'rest') && myProvs.has(a.prov)
+      && Object.values(s.armies).some((e) => warTargets.has(e.fac) && e.units.length && (e.prov === a.prov || neighbors(a.prov).includes(e.prov) || neighbors(a.prov).some((n) => neighbors(n).includes(e.prov))))) a.stance = 'intercept';
+    else a.stance = 'normal';
     // Vor Ort: Sturm oder Plünderung
     const here = prov(a.prov);
     if (here.owner !== me && atWar(me, here.owner)) {

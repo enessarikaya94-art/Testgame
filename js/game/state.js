@@ -100,23 +100,51 @@ export function hasAccess(a, b) {
   if (allied(a, b)) return true;
   const fa = G.s.factions[a], fb = G.s.factions[b];
   if (fa?.overlord === b || fb?.overlord === a) return true;
+  if (relPeek(a, b)?.access) return true;
   return false;
 }
 
-export function opinion(a, b) {
+// Aufschlüsselung der Haltung zwischen zwei Mächten
+export function opinionParts(a, b) {
   const fa = G.s.factions[a], fb = G.s.factions[b];
-  if (!fa || !fb) return 0;
+  if (!fa || !fb) return [];
   const r = relPeek(a, b);
-  let o = religionAffinity(fa.religion, fb.religion) + cultureAffinity(fa.culture, fb.culture);
+  const parts = [];
+  const add = (k, v) => { if (Math.abs(v) >= 1) parts.push([k, Math.round(v)]); };
+  add('op.religion', religionAffinity(fa.religion, fb.religion));
+  add('op.culture', cultureAffinity(fa.culture, fb.culture));
   if (r) {
-    o += r.mod;
-    if (r.war) o -= 50;
-    if (r.alliance) o += 25;
-    if (r.trade) o += 10;
+    add('op.history', r.mod);
+    if (r.war) add('op.war', -50);
+    if (r.alliance) add('op.alliance', 25);
+    if (r.trade) add('op.trade', 10);
+    if (r.access) add('op.access', 5);
+    if (r.pay && !r.war && r.pay.until > G.s.turn) add(r.pay.from === a ? 'op.weGive' : 'op.theyGive', r.pay.from === a ? 12 : -8);
   }
-  if (fa.overlord === b || fb.overlord === a) o += 15;
-  o -= Math.min(30, (fa.infamy + fb.infamy) * 0.15);
+  if (fa.overlord === b || fb.overlord === a) add('op.vassal', 15);
+  if (G.borders?.has(pairKey(a, b))) add('op.border', -6);
+  const common = Object.values(G.s.factions).some((f) => f.alive && f.id !== a && f.id !== b && f.id !== 'rebels' && relPeek(a, f.id)?.war && relPeek(b, f.id)?.war);
+  if (common) add('op.commonEnemy', 12);
+  add('op.infamy', -Math.min(30, (fa.infamy + fb.infamy) * 0.15));
+  return parts;
+}
+
+export function opinion(a, b) {
+  const o = opinionParts(a, b).reduce((s, x) => s + x[1], 0);
   return clamp(Math.round(o), -100, 100);
+}
+
+// Welche Mächte grenzen aneinander? (für die Haltung)
+export function computeBorders() {
+  const set = new Set();
+  for (const pid in G.s.provinces) {
+    const o = G.s.provinces[pid].owner;
+    for (const n of neighbors(pid)) {
+      const o2 = G.s.provinces[n].owner;
+      if (o2 !== o) set.add(pairKey(o, o2));
+    }
+  }
+  G.borders = set;
 }
 
 // ---------- Handelsrouten ----------

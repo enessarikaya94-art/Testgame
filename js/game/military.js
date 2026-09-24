@@ -7,6 +7,8 @@ import { resolveBattle, garrisonUnits } from './battle.js';
 import { getMods, provinceIncome, createArmy } from './economy.js';
 import { stat, killChar } from './characters.js';
 import { clamp } from '../util.js';
+import { specialtyEff } from '../data/specialties.js';
+import { focusEff } from './market.js';
 
 export const MAX_UNITS = 20;
 
@@ -31,7 +33,7 @@ export function garrisonPower(pid) {
 }
 
 export function effectiveWalls(pid) {
-  return (prov(pid).buildings.walls || 0) + wallBonus(pid);
+  return (prov(pid).buildings.walls || 0) + wallBonus(pid) + (specialtyEff(pid).walls || 0);
 }
 
 export function isCavalryOnly(a) {
@@ -51,6 +53,8 @@ export function armySpeed(a) {
   const g = chr(a.gen);
   if (g && g.traits.includes('horse_lord')) sp += 0.25;
   if (G.s.season === 3 && !isNomadArmy(a)) sp -= 0.5;
+  if (a.stance === 'fortify') return 0;
+  if (a.stance === 'forced') sp *= 1.5;
   return Math.max(1, sp);
 }
 
@@ -72,11 +76,11 @@ export function canEnter(a, pid) {
 }
 
 // Dijkstra über Provinzen; feindliche Provinzen dürfen nur als Ziel oder von reinen Reiterheeren durchquert werden
-export function reach(a, target = null, maxCost = Infinity) {
+export function reach(a, target = null, maxCost = Infinity, start = a.prov) {
   const cavOnly = isCavalryOnly(a);
-  const dist = { [a.prov]: 0 };
+  const dist = { [start]: 0 };
   const prev = {};
-  const open = [a.prov];
+  const open = [start];
   const done = new Set();
   while (open.length) {
     let bi = 0;
@@ -86,32 +90,43 @@ export function reach(a, target = null, maxCost = Infinity) {
     done.add(c);
     if (c === target) break;
     if (dist[c] > maxCost) break;
-    if (c !== a.prov) {
-      const o = prov(c).owner;
-      const hostile = o !== a.fac && atWar(a.fac, o);
-      if (hostile && !cavOnly) continue; // Feindgebiet stoppt Fußheere
-    }
     for (const n of neighbors(c)) {
       if (done.has(n)) continue;
       if (!canEnter(a, n)) continue;
-      const nd = dist[c] + moveCost(c, n);
+      // Feindgebiet beendet den Marsch einer Runde (außer bei reinen Reiterheeren)
+      const o = prov(n).owner;
+      const hostile = o !== a.fac && atWar(a.fac, o);
+      const nd = dist[c] + moveCost(c, n) + (hostile && !cavOnly ? 1.5 : 0);
       if (dist[n] === undefined || nd < dist[n]) { dist[n] = nd; prev[n] = c; if (!open.includes(n)) open.push(n); }
     }
   }
   return { dist, prev };
 }
 
-export function pathFrom(a, r, target) {
+export function pathFrom(a, r, target, start = a.prov) {
   if (r.dist[target] === undefined) return null;
   const path = [];
   let c = target;
-  while (c !== a.prov) { path.unshift(c); c = r.prev[c]; if (c === undefined) return null; }
+  while (c !== start) { path.unshift(c); c = r.prev[c]; if (c === undefined) return null; }
   return path;
 }
 
-export function findPath(a, target) {
-  if (a.prov === target) return [];
-  return pathFrom(a, reach(a, target), target);
+export function findPath(a, target, start = a.prov) {
+  if (start === target) return [];
+  return pathFrom(a, reach(a, target, Infinity, start), target, start);
+}
+
+// Route über mehrere Wegpunkte
+export function findRoute(a, waypoints) {
+  let start = a.prov;
+  const route = [];
+  for (const w of waypoints) {
+    const seg = findPath(a, w, start);
+    if (!seg) return null;
+    route.push(...seg);
+    start = w;
+  }
+  return route;
 }
 
 export function pathTurns(a, path) {
@@ -119,11 +134,14 @@ export function pathTurns(a, path) {
   const speed = armySpeed(a);
   let prev = a.prov;
   const marks = [];
+  const cavOnly = isCavalryOnly(a);
   for (const p of path) {
     const c = moveCost(prev, p);
     if (mp < c - 0.001) { turns++; mp = speed; }
     mp -= c;
     marks.push(turns);
+    const o = prov(p).owner;
+    if (o !== a.fac && atWar(a.fac, o) && !cavOnly) mp = 0;
     prev = p;
   }
   return marks;
@@ -133,13 +151,19 @@ function hostileArmiesIn(fid, pid) {
   return armiesIn(pid).filter((x) => x.fac !== fid && atWar(fid, x.fac) && x.units.length);
 }
 
-// Bewegt ein Heer entlang eines Pfades so weit wie möglich. Löst Schlachten aus.
+// Bewegt ein Heer zu einem Ziel (neue Route)
 export async function moveArmy(a, target) {
   const path = findPath(a, target);
   if (!path || !path.length) { a.path = []; return { moved: false }; }
   a.path = path.slice();
+  return advanceArmy(a);
+}
+
+// Arbeitet die gespeicherte Route ab, so weit die Bewegungspunkte reichen. Löst Schlachten und Abfangmanöver aus.
+export async function advanceArmy(a) {
   let moved = false;
-  while (a.path.length) {
+  if (a.stance === 'fortify') return { moved };
+  while (a.path && a.path.length) {
     const next = a.path[0];
     const cost = moveCost(a.prov, next);
     if (a.mp < cost - 0.001) break;
@@ -150,22 +174,49 @@ export async function moveArmy(a, target) {
       if (!G.s.armies[a.id]) return { moved, destroyed: true };
       a.mp = 0;
       if (res.winner !== 'att') { a.path = []; return { moved, battle: res }; }
-      // Sieger rückt nach
     }
     a.path.shift();
     a.mp -= cost;
     const from = a.prov;
     a.prov = next;
     moved = true;
+    a.moved = true;
+    if (!a.trail || a.trail.turn !== G.s.turn) a.trail = { turn: G.s.turn, provs: [from] };
+    a.trail.provs.push(next);
     if (a.siegeOf && a.siegeOf !== next) a.siegeOf = null;
     const o = prov(next).owner;
     if (o !== a.fac && atWar(a.fac, o)) {
-      if (!isCavalryOnly(a) || !a.path.length) { a.mp = 0; a.path = []; }
+      if (!isCavalryOnly(a) || !a.path.length) { a.mp = 0; }
     }
     if (from && prov(from).siege && prov(from).siege.fac === a.fac) checkSiegeLifted(from);
+    // Abfangen durch lauernde Feindheere
+    const ic = await checkInterception(a, next);
+    if (ic) { if (!G.s.armies[a.id]) return { moved, destroyed: true }; a.mp = 0; break; }
   }
-  if (!a.path.length) a.path = [];
+  if (!a.path) a.path = [];
   return { moved };
+}
+
+// Heere in Stellung "Abfangen" greifen Feinde an, die ihre oder eine benachbarte Provinz betreten
+async function checkInterception(mover, pid) {
+  const s = G.s;
+  const cands = Object.values(s.armies).filter((e) => e.stance === 'intercept' && e.units.length && e.interceptTurn !== s.turn
+    && atWar(e.fac, mover.fac) && (e.prov === pid || neighbors(e.prov).includes(pid)) && canEnter(e, pid));
+  if (!cands.length) return false;
+  cands.sort((x, y) => armyPower(y) - armyPower(x));
+  const e = cands[0];
+  const ratio = armyPower(e) / (armyPower(mover) + 1);
+  if (e.fac !== s.player && ratio < 0.8) return false;
+  e.interceptTurn = s.turn;
+  if (e.prov !== pid) {
+    if (!e.trail || e.trail.turn !== s.turn) e.trail = { turn: s.turn, provs: [e.prov] };
+    e.trail.provs.push(pid);
+    e.prov = pid;
+  }
+  log('log.intercept', { a: facName(e.fac), b: facName(mover.fac), prov: provName(pid) }, { f: e.fac, imp: e.fac === s.player || mover.fac === s.player });
+  await resolveBattle({ att: [e.id], def: [mover.id], prov: pid, assault: false, ambush: true });
+  if (s.armies[mover.id]) mover.path = [];
+  return true;
 }
 
 export async function fight(attackers, defenders, pid, assault) {
@@ -364,8 +415,11 @@ export function processSupply() {
     if (d.terrain === 'desert' && !nomad && !['camel'].includes(a.units[0] && UNITS[a.units[0].t].cls)) attr += 0.04;
     if (s.season === 3 && !nomad) attr += own ? 0 : d.terrain === 'mountain' ? 0.08 : 0.03;
     if (!friendly && !nomad) attr += 0.02;
+    const se = specialtyEff(a.prov);
+    if (!own) attr += se.hostileAttrition || 0;
+    if (a.stance === 'forced' && a.moved) attr += 0.04;
     // Versorgung: große Heere in armen Provinzen
-    const supply = p.pop / 12 + (TERRAINS[d.terrain].pasture * (nomad ? 4 : 1));
+    const supply = (p.pop / 12 + (TERRAINS[d.terrain].pasture * (nomad ? 4 : 1))) * (1 + ((se.supply || 0) + (own ? focusEff(a.prov).supply || 0 : 0)) * 0.5);
     const men = armyMen(a) / 100;
     if (men > supply) attr += Math.min(0.06, (men - supply) / supply * 0.03);
     if (fac(a.fac).gold < 0) attr += 0.03;
@@ -384,8 +438,20 @@ export function processSupply() {
   }
 }
 
+// Haltung eines Heeres ändern
+export const STANCES = ['normal', 'forced', 'intercept', 'fortify'];
+export function setStance(a, stance) {
+  const old = a.stance || 'normal';
+  if (old === stance) return;
+  const full = armySpeed({ ...a, stance: 'normal' });
+  if (stance === 'fortify' || old === 'fortify') a.mp = 0;
+  else if (stance === 'forced' && !a.moved) a.mp = Math.max(a.mp, full * 1.5);
+  else if (old === 'forced') a.mp = Math.min(a.mp, a.moved ? Math.max(0, a.mp - full * 0.5) : full);
+  a.stance = stance;
+}
+
 export function resetMovement() {
-  for (const a of Object.values(G.s.armies)) a.mp = armySpeed(a);
+  for (const a of Object.values(G.s.armies)) { a.mp = armySpeed(a); a.moved = false; }
 }
 
 export function mergeArmies(a, b) {

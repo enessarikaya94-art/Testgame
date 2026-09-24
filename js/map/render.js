@@ -1,6 +1,6 @@
 // Darstellung der Kampagnenkarte im Stil einer alten Pergamentkarte.
 
-import { WORLD_W, WORLD_H, project, WATER, ISLANDS, RIVERS, MOUNTAINS, WASTELANDS } from '../data/geo.js';
+import { WORLD_W, WORLD_H, project, WATER, ISLANDS, RIVERS, MOUNTAINS, WASTELANDS, REGION_LABELS } from '../data/geo.js';
 import { PROVINCES } from '../data/provinces.js';
 import { TERRAINS, RELIGIONS, CULTURES, TRADE_ROUTES } from '../data/world.js';
 import { CELL } from './mapgen.js';
@@ -163,6 +163,26 @@ export class MapView {
         ctx.stroke();
       }
     }
+    // Karawanenstraßen
+    ctx.save();
+    ctx.strokeStyle = 'rgba(110,75,35,0.45)';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([2, 4]);
+    ctx.lineCap = 'round';
+    const pidx = Object.fromEntries(PROVINCES.map((p) => [p.id, project(p.lon, p.lat)]));
+    for (const r of TRADE_ROUTES) {
+      ctx.beginPath();
+      r.path.forEach((pid, i) => {
+        const [x, y] = pidx[pid];
+        if (!i) { ctx.moveTo(x, y); return; }
+        const [px, py] = pidx[r.path[i - 1]];
+        // leicht geschwungene Wege
+        const mx = (px + x) / 2 + (py - y) * 0.08, my = (py + y) / 2 + (x - px) * 0.08;
+        ctx.quadraticCurveTo(mx, my, x, y);
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
     // Kompassrose
     this.drawCompass(ctx, ...project(64.5, 15.5), 70);
     // Rahmen
@@ -471,6 +491,19 @@ export class MapView {
         ctx.fillText(name.toUpperCase(), l.x, l.y);
       }
     } else {
+      if (z < 1.15) {
+        ctx.save();
+        for (const r of REGION_LABELS) {
+          const [x, y] = project(r.lon, r.lat);
+          ctx.save();
+          ctx.translate(x, y); ctx.rotate((r.rot * Math.PI) / 180);
+          ctx.font = `italic 600 ${r.size}px "Cinzel", Georgia, serif`;
+          ctx.fillStyle = 'rgba(80,55,30,0.16)';
+          ctx.fillText(spaced(L(r.n).toUpperCase()), 0, 0);
+          ctx.restore();
+        }
+        ctx.restore();
+      }
       const fs = 11.5 / z;
       ctx.font = `600 ${fs}px "Cinzel", Georgia, serif`;
       for (const p of this.map.provinces) {
@@ -536,6 +569,18 @@ export class MapView {
         ctx.font = `bold ${11 * s}px serif`; ctx.fillStyle = '#b03a2e';
         ctx.fillText('!', p.x + r + 3 * s, p.y - 4 * s);
       }
+      if (info.pop > 200) {
+        ctx.strokeStyle = INK; ctx.lineWidth = 0.9 * s;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.65, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (z >= 0.95 && g.specialties) {
+        const icons = g.specialties(p.id).map((sp) => sp.icon);
+        if (icons.length) {
+          ctx.font = `${8.5 * s}px serif`;
+          ctx.fillStyle = 'rgba(40,28,15,0.9)';
+          ctx.fillText(icons.join(''), p.x, p.y + r + (z >= 1.25 ? 13 : 2) * s);
+        }
+      }
       if (z >= 1.25) {
         ctx.font = `italic ${10 * s}px "EB Garamond", Georgia, serif`;
         ctx.fillStyle = 'rgba(40,28,15,0.85)';
@@ -595,6 +640,7 @@ export class MapView {
       ctx.fillStyle = a.fac === g.player ? INK : '#f4e6b8';
       ctx.fillText(txt, x, y + 12.5 * s);
       if (a.raid) { ctx.fillStyle = '#b03a2e'; ctx.font = `bold ${10 * s}px serif`; ctx.fillText('🔥', x - 8 * s, y - 14 * s); }
+      if (a.stance && a.stance !== 'normal') { ctx.font = `${9 * s}px serif`; ctx.fillText({ forced: '💨', intercept: '👁', fortify: '🛡' }[a.stance] || '', x + 17 * s, y - 14 * s); }
       if (a.fac === g.player && a.mp > 0.01 && !(a.path && a.path.length)) {
         ctx.fillStyle = '#2e7d32'; ctx.beginPath(); ctx.arc(x - 4 * s, y - 10 * s, 2.2 * s, 0, Math.PI * 2); ctx.fill();
       }
@@ -632,6 +678,46 @@ export class MapView {
       draw(a.prov, a.path, g.pathMarks(a, a.path), 'rgba(40,90,40,0.75)');
     }
     if (this.preview) draw(this.preview.from, this.preview.path, this.preview.marks, this.preview.ok ? 'rgba(20,110,30,0.9)' : 'rgba(150,30,20,0.9)');
+    // Wegpunkte (Etappen) markieren
+    const wps = this.preview?.waypoints || [];
+    wps.slice(0, -1).forEach((w, i) => {
+      const p = this.map.provIndex[w];
+      ctx.save();
+      ctx.fillStyle = '#c9a227'; ctx.strokeStyle = '#3e2f1f'; ctx.lineWidth = 1.2 * s;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - 9 * s); ctx.lineTo(p.x + 7 * s, p.y); ctx.lineTo(p.x, p.y + 9 * s); ctx.lineTo(p.x - 7 * s, p.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#2b1d0e'; ctx.font = `bold ${8 * s}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), p.x, p.y + 0.5 * s);
+      ctx.restore();
+    });
+    // Marschspuren fremder Heere aus der letzten Runde
+    for (const a of g.armies()) {
+      const tr = a.trail;
+      if (!tr || a.fac === g.player || tr.turn !== g.turn - 1 || tr.provs.length < 2) continue;
+      const hostile = g.hostile(a.fac);
+      if (!hostile && this.cam.z < 0.8) continue;
+      ctx.save();
+      ctx.strokeStyle = hostile ? 'rgba(170,25,20,0.8)' : 'rgba(80,60,40,0.45)';
+      ctx.lineWidth = (hostile ? 2.4 : 1.4) * s; ctx.setLineDash([3 * s, 4 * s]);
+      const pts = tr.provs.map((pid) => this.map.provIndex[pid]);
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+      ctx.stroke(); ctx.setLineDash([]);
+      const [p1, p2] = [pts[pts.length - 2], pts[pts.length - 1]];
+      const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      const hx = p2.x - Math.cos(ang) * 10 * s, hy = p2.y - Math.sin(ang) * 10 * s;
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath(); ctx.moveTo(hx + Math.cos(ang) * 8 * s, hy + Math.sin(ang) * 8 * s);
+      ctx.lineTo(hx + Math.cos(ang + 2.5) * 7 * s, hy + Math.sin(ang + 2.5) * 7 * s);
+      ctx.lineTo(hx + Math.cos(ang - 2.5) * 7 * s, hy + Math.sin(ang - 2.5) * 7 * s); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // gezogenes Heer
+    if (this.dragPos) {
+      ctx.save(); ctx.globalAlpha = 0.6; ctx.fillStyle = '#fff3b0'; ctx.strokeStyle = '#3e2f1f'; ctx.lineWidth = 1.5 * s;
+      ctx.beginPath(); ctx.arc(this.dragPos[0], this.dragPos[1], 9 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.font = `${11 * s}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#3e2f1f'; ctx.fillText('⚑', this.dragPos[0], this.dragPos[1]);
+      ctx.restore();
+    }
   }
 
   // ---------- Kamera & Eingabe ----------
@@ -694,7 +780,15 @@ export class MapView {
     c.addEventListener('pointerdown', (e) => {
       c.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
-      if (pointers.size === 1) drag = { sx: e.offsetX, sy: e.offsetY, cx: this.cam.x, cy: this.cam.y, moved: false, button: e.button };
+      if (pointers.size === 1) {
+        drag = { sx: e.offsetX, sy: e.offsetY, cx: this.cam.x, cy: this.cam.y, moved: false, button: e.button };
+        // Eigenes Heer greifen: Ziehen statt Karte verschieben
+        if (e.button === 0 && this.game) {
+          const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
+          const a = this.armyAt(wx, wy);
+          if (a && a.fac === this.game.player) drag.army = a;
+        }
+      }
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.cam.z };
@@ -714,6 +808,13 @@ export class MapView {
       if (drag) {
         const dx = e.offsetX - drag.sx, dy = e.offsetY - drag.sy;
         if (Math.abs(dx) + Math.abs(dy) > 5) drag.moved = true;
+        if (drag.moved && drag.army) {
+          const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
+          this.dragPos = [wx, wy];
+          this.emit('armyDrag', drag.army, this.provinceAt(wx, wy));
+          this.invalidate();
+          return;
+        }
         if (drag.moved) {
           this.cam.x = drag.cx - dx / this.cam.z;
           this.cam.y = drag.cy - dy / this.cam.z;
@@ -725,11 +826,16 @@ export class MapView {
       const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
       const pid = this.provinceAt(wx, wy);
       if (pid !== this.hoverProv) { this.hoverProv = pid; this.invalidate(); }
-      this.emit('hover', pid, e.clientX, e.clientY);
+      this.emit('hover', pid, e.clientX, e.clientY, this.armyAt(wx, wy));
     });
     const up = (e) => {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch = null;
+      if (drag && drag.moved && drag.army) {
+        const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
+        this.dragPos = null;
+        this.emit('armyDrop', drag.army, this.provinceAt(wx, wy));
+      }
       if (drag && !drag.moved) {
         const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
         const army = this.armyAt(wx, wy);

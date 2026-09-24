@@ -5,6 +5,8 @@ import { armyPower } from './military.js';
 import { RELIGIONS } from '../data/world.js';
 import { TITLES } from '../data/factions.js';
 import { clamp } from '../util.js';
+import { generals, loyalty, createChar, civilWar } from './characters.js';
+import { setPayment, resourceAccess } from './market.js';
 
 export const TRUCE_TURNS = 12;
 
@@ -109,6 +111,7 @@ export function makePeace(a, b, terms = {}) {
     for (const ar of Object.values(G.s.armies)) if (ar.prov === pid && ar.fac !== to) moveHome(ar);
   }
   if (terms.vassal) fac(terms.vassal).overlord = terms.vassal === a ? b : a;
+  if (terms.pay) setPayment(terms.pay.from, terms.pay.from === a ? b : a, terms.pay.amount, terms.pay.turns);
   for (const f of [fa, fb]) f.warWeariness = Math.max(0, f.warWeariness - 10);
   // Heere in fremdem Gebiet kehren heim
   for (const ar of Object.values(G.s.armies)) {
@@ -141,6 +144,7 @@ export function peaceAcceptance(from, to, terms) {
     const val = 12 + prov(pid).pop / 12;
     v += prov(pid).owner === from ? val : -val * 1.4;
   }
+  if (terms.pay) v += (terms.pay.from === from ? 1 : -1) * terms.pay.amount * terms.pay.turns / 14;
   if (terms.vassal === to) v -= 60;
   if (terms.vassal === from) v += 50;
   if (from === 'mongol' || to === 'mongol') v -= 10;
@@ -154,7 +158,18 @@ export function proposalAcceptance(type, from, to) {
   const ratio = pf / (pt + 1);
   const ft = fac(to);
   switch (type) {
-    case 'trade': return op + 15 - (atWar(from, to) ? 999 : 0);
+    case 'trade': {
+      // Wer Ressourcen braucht, die der andere hat, handelt gern
+      const need = resourceAccess(to), give = resourceAccess(from);
+      const gain = [...give.own].filter((x) => !need.own.has(x)).length;
+      return op + 15 + gain * 12 - (atWar(from, to) ? 999 : 0);
+    }
+    case 'access': return op + 5 - (fac(from).ai.aggr * 20) - (neighborsOf(to).includes(from) ? 10 : 0) - (atWar(from, to) ? 999 : 0);
+    case 'tributeTreaty': {
+      if (atWar(from, to) || fac(to).overlord === from) return -999;
+      return (ratio - 1.8) * 35 + op * 0.2 + (neighborsOf(to).includes(from) ? 10 : -25) - (fac(to).ai.aggr * 20);
+    }
+    case 'subsidy': return 60;
     case 'alliance': {
       const common = aliveFactions().some((f) => f.id !== from && f.id !== to && atWar(from, f.id) && atWar(to, f.id));
       return op - 25 + (common ? 30 : 0) + (ratio > 1 ? 10 : 0) - (ft.ai.aggr > 0.8 ? 20 : 0);
@@ -232,6 +247,12 @@ export function demandTribute(from, to) {
   return n;
 }
 
+export function setAccess(a, b, on) {
+  const r = rel(a, b);
+  r.access = on;
+  if (on) r.mod += 3; else r.mod -= 8;
+}
+
 export function marriage(a, b) {
   rel(a, b).mod += 25;
   rel(a, b).married = G.s.turn;
@@ -241,6 +262,18 @@ export function marriage(a, b) {
 // Jährliche Pflege
 export function processDiplomacy() {
   const s = G.s;
+  // Übergroße Reiche: Emire und Atabegs machen sich in fernen Provinzen selbstständig
+  for (const f of aliveFactions()) {
+    if (f.id === 'rebels' || f.id === 'mongol') continue;
+    const n = factionProvinces(f.id).length;
+    if (n <= 30) continue;
+    const risk = Math.min(0.35, (n - 30) * 0.015) * (1 - Math.min(0.5, (f.legitimacy - 50) / 100));
+    if (!rng().chance(risk)) continue;
+    let emir = generals(f.id).filter((c) => !c.dyn && c.id !== f.ruler && c.id !== f.vizier).sort((a, b) => loyalty(a) - loyalty(b))[0];
+    if (!emir) emir = createChar(f.id, { dyn: false, role: 'general', traits: ['ambitious'] });
+    const nid = civilWar(f.id, emir);
+    if (nid) log('log.atabeg', { name: emir.n, fac: f.n }, { f: f.id, imp: true });
+  }
   for (const k in s.rel) {
     const r = s.rel[k];
     r.mod *= 0.97;

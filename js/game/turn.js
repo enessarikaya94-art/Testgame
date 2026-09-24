@@ -1,6 +1,6 @@
 // Neues Spiel, Rundenablauf, Siegbedingungen.
 
-import { G, createGame, fac, prov, factionProvinces, factionArmies, aliveFactions, log, END_YEAR, relPeek, rng, S } from './state.js';
+import { G, computeBorders, createGame, fac, prov, factionProvinces, factionArmies, aliveFactions, log, END_YEAR, relPeek, rng, S } from './state.js';
 import { setupRulers, processCharacters, createChar, updateHeir, generals, age, stat } from './characters.js';
 import { startingArmies, beginSieges, progressSieges, processRaids, processSupply, resetMovement, checkFactionDeath, assignGeneral } from './military.js';
 import { processEconomy, computeDistances, countTrade, clearModCache, orderBreakdown, factionIncome, processRebellions } from './economy.js';
@@ -8,6 +8,7 @@ import { processDiplomacy, validateTitles, militaryPower } from './diplomacy.js'
 import { aiTurn } from './ai.js';
 import { rollEvents, runGlobalEvents } from './events.js';
 import { processWorldEvents } from './world-events.js';
+import { initMarket, updateMarket, expirePayments } from './market.js';
 import { SCENARIOS } from '../data/scenarios.js';
 import { FACTIONS, TITLES } from '../data/factions.js';
 
@@ -16,6 +17,7 @@ export function newGame(scenarioId, playerFid, mapData, seed) {
   setupRulers(SCENARIOS[scenarioId]);
   startingArmies();
   assignStartingGenerals();
+  initMarket();
   refreshCaches();
   for (const pid in s.provinces) {
     const p = s.provinces[pid];
@@ -45,6 +47,7 @@ function assignStartingGenerals() {
 
 export function refreshCaches() {
   clearModCache();
+  computeBorders();
   computeDistances();
   countTrade();
 }
@@ -94,7 +97,8 @@ export async function endTurn(progress) {
       s.pendingRulers = [];
     }
     processRebellions();
-    if (s.season === 3) processDiplomacy();
+    if (s.season === 3) { processDiplomacy(); updateMarket(); }
+    expirePayments();
     validateTitles();
     runGlobalEvents();
     processWorldEvents();

@@ -94,6 +94,9 @@ function previewScenario(sid) {
 function previewAccess() {
   return {
     get player() { return setup.faction; },
+    get turn() { return G.s.turn; },
+    hostile: () => false,
+    specialties: () => [],
     owner: (pid) => G.s.provinces[pid].owner,
     provColor: (pid) => {
       const o = G.s.provinces[pid].owner;

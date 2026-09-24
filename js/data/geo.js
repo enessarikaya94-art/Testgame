@@ -229,3 +229,22 @@ export const SEA_LINKS = [
   ['egypt', 'upper_egypt'],
   ['upper_egypt', 'nubia'],
 ];
+
+// Große Landschaftsnamen (in mittlerer Zoomstufe sichtbar)
+export const REGION_LABELS = [
+  { n: { de: 'Transoxanien', tr: 'Maveraünnehir' }, lon: 66.5, lat: 40.9, size: 30, rot: -8 },
+  { n: { de: 'Chorasan', tr: 'Horasan' }, lon: 60.5, lat: 35.6, size: 32, rot: 0 },
+  { n: { de: 'Anatolien', tr: 'Anadolu' }, lon: 33.5, lat: 39.1, size: 34, rot: -4 },
+  { n: { de: 'Levante', tr: 'Levant' }, lon: 37.2, lat: 33.9, size: 22, rot: -70 },
+  { n: { de: 'Irak', tr: 'Irak' }, lon: 44.9, lat: 32.2, size: 28, rot: -35 },
+  { n: { de: 'Persien', tr: 'Acem' }, lon: 54.0, lat: 30.8, size: 36, rot: -10 },
+  { n: { de: 'Kaukasus', tr: 'Kafkasya' }, lon: 45.2, lat: 41.9, size: 22, rot: -18 },
+  { n: { de: 'Desch-i Kiptschak', tr: 'Deşt-i Kıpçak' }, lon: 58.0, lat: 49.8, size: 38, rot: 0 },
+  { n: { de: 'Siebenstromland', tr: 'Yedisu' }, lon: 77.5, lat: 45.0, size: 24, rot: 0 },
+  { n: { de: 'Tarimbecken', tr: 'Tarım Havzası' }, lon: 83.5, lat: 40.3, size: 24, rot: 0 },
+  { n: { de: 'Hindustan', tr: 'Hindistan' }, lon: 77.8, lat: 26.0, size: 36, rot: 0 },
+  { n: { de: 'Arabien', tr: 'Arabistan' }, lon: 44.0, lat: 22.5, size: 40, rot: -20 },
+  { n: { de: 'Ägypten', tr: 'Mısır' }, lon: 29.8, lat: 27.5, size: 30, rot: -80 },
+  { n: { de: 'Rumelien', tr: 'Rumeli' }, lon: 24.8, lat: 42.2, size: 22, rot: 0 },
+  { n: { de: 'Afghanistan', tr: 'Afganistan' }, lon: 66.2, lat: 33.0, size: 22, rot: 0 },
+];

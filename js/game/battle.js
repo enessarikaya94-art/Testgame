@@ -6,6 +6,8 @@ import { TERRAINS, RELIGIONS, CULTURES } from '../data/world.js';
 import { getMods } from './economy.js';
 import { stat, killChar } from './characters.js';
 import { clamp } from '../util.js';
+import { specialtyEff } from '../data/specialties.js';
+import { focusEff } from './market.js';
 
 export const TACTICS = {
   frontal: {
@@ -54,7 +56,8 @@ export function garrisonUnits(pid) {
   const f = fac(p.owner);
   const m = getMods(p.owner);
   const capital = f && f.capital === pid;
-  const n = clamp(Math.round((2 + walls * 1.5 + p.pop / 80 + (p.buildings.barracks || 0)) * (1 + m.garrison) * (capital ? 1.5 : 1)), 2, 18);
+  const gx = (specialtyEff(pid).garrison || 0) + (focusEff(pid).garrison || 0);
+  const n = clamp(Math.round((2 + walls * 1.5 + p.pop / 80 + (p.buildings.barracks || 0)) * (1 + m.garrison + gx) * (capital ? 1.5 : 1)), 2, 20);
   const pool = ['militia', 'militia', 'archers', 'spearmen'];
   const cult = (CULTURE_ARMY[p.culture] || []).filter((u) => !UNIT_CLASSES[UNITS[u].cls].cav && !UNITS[u].tech && !UNITS[u].factions);
   if (cult.length) pool.push(cult[0]);
@@ -198,6 +201,8 @@ export async function resolveBattle(ctx) {
 
   const report = { ...info, tA, tD, lines: [] };
   report.lines.push({ k: 'b.intro', p: { att: facName(attFac), def: facName(defFac), prov: provName(pid), terrain: TERRAINS[terrain].n } });
+  if (ctx.ambush) report.lines.push({ k: 'b.intercept', p: { fac: facName(attFac) } });
+  if (defArmies.some((x) => x.stance === 'fortify')) report.lines.push({ k: 'b.fortified', p: { fac: facName(defFac) } });
 
   // Rückzug
   for (const [side, t, armies, enemyComp, myComp] of [['att', tA, attArmies, cD, cA], ['def', tD, defArmies, cA, cD]]) {
@@ -234,6 +239,9 @@ export async function resolveBattle(ctx) {
   let PA = sidePower(attUnits, cA, attFac, mA, terrain, attGen, false, cD, ctx.assault, walls) * rng().range(0.85, 1.15);
   let PD = sidePower(defUnits, cD, defFac, mD, terrain, defGen, true, cA, ctx.assault, walls) * rng().range(0.85, 1.15);
   if (ctx.assault && cA.siege === 0 && walls >= 2) PA *= 0.75;
+  // Gelände der Provinz (Pässe, Festungen) und verschanzte Verteidiger
+  PD *= 1 + (specialtyEff(pid).defense || 0) + (defArmies.some((x) => x.stance === 'fortify') ? 0.25 : 0);
+  if (ctx.ambush) PA *= 1.15;
   const ratio = PA / (PA + PD);
   const k = 2.2;
   const pWin = Math.pow(ratio, k) / (Math.pow(ratio, k) + Math.pow(1 - ratio, k));
