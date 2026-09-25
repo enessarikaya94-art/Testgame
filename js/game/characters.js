@@ -308,3 +308,18 @@ export function appointVizier(fid) {
   f.vizier = v.id;
   return v;
 }
+
+// Einmal im Jahr: Längst Verstorbene aus dem Gedächtnis streichen, damit Spielstände klein bleiben.
+// Frühere Herrscher bleiben (die letzten acht je lebender Macht) für die Ahnenreihe erhalten.
+export function pruneDead() {
+  const s = G.s, keep = new Map();
+  const dead = Object.values(s.chars).filter((c) => !c.alive).sort((a, b) => (b.died || 0) - (a.died || 0));
+  for (const c of dead) {
+    if (s.year - (c.died || s.year) < 3) continue;
+    if (c.pastRuler && s.factions[c.fac]?.alive) {
+      const n = keep.get(c.fac) || 0;
+      if (n < 8) { keep.set(c.fac, n + 1); continue; }
+    }
+    delete s.chars[c.id];
+  }
+}

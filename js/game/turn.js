@@ -1,7 +1,7 @@
 // Neues Spiel, Rundenablauf, Siegbedingungen.
 
 import { G, computeBorders, createGame, fac, prov, factionProvinces, factionArmies, aliveFactions, log, END_YEAR, relPeek, rng, S, withArmyIndex } from './state.js';
-import { setupRulers, processCharacters, createChar, updateHeir, generals, age, stat } from './characters.js';
+import { setupRulers, processCharacters, createChar, updateHeir, generals, age, stat, pruneDead } from './characters.js';
 import { startingArmies, beginSieges, progressSieges, processRaids, processSupply, resetMovement, checkFactionDeath, assignGeneral } from './military.js';
 import { processEconomy, computeDistances, countTrade, clearModCache, orderBreakdown, factionIncome, processRebellions } from './economy.js';
 import { processDiplomacy, validateTitles, militaryPower } from './diplomacy.js';
@@ -96,6 +96,7 @@ export async function endTurn(progress) {
       for (const f of aliveFactions()) if (f.id !== 'rebels') processEconomy(f.id);
     });
     for (const f of aliveFactions()) if (f.id !== 'rebels') processCharacters(f.id);
+    if (G.s.season === 0) pruneDead();
     // Neue unabhängige Fraktionen brauchen Herrscher
     if (s.pendingRulers?.length) {
       for (const fid of s.pendingRulers) {

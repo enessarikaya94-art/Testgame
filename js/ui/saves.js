@@ -8,13 +8,25 @@ export const SLOTS = ['auto', '1', '2', '3', '4', '5'];
 
 function serialize() {
   G.s.rngState = G.rng.state;
-  return JSON.stringify(G.s);
+  // Kommazahlen auf drei Stellen kürzen: spart rund ein Drittel des Speicherplatzes
+  return JSON.stringify(G.s, (k, v) => (typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v));
+}
+
+function store(key, data) {
+  try { localStorage.setItem(key, data); return true; } catch (e) { return false; }
 }
 
 export function saveSlot(slot) {
   try {
     const data = serialize();
-    localStorage.setItem(PREFIX + slot, data);
+    if (!store(PREFIX + slot, data)) {
+      // Speicher voll: alten Stand dieses Platzes und notfalls den Autosave freigeben, dann erneut versuchen
+      deleteSlot(slot);
+      if (!store(PREFIX + slot, data)) {
+        if (slot !== 'auto') deleteSlot('auto');
+        if (!store(PREFIX + slot, data)) return false;
+      }
+    }
     localStorage.setItem(PREFIX + slot + '_meta', JSON.stringify({
       scenario: G.s.scenario, player: G.s.player, year: G.s.year, season: G.s.season, turn: G.s.turn, date: Date.now(),
       facName: G.s.factions[G.s.player]?.n,

@@ -681,7 +681,7 @@ export function gameMenu() {
     </div>`;
   return openModal(render(), {
     handlers: (close, wrap) => ({
-      save: (el) => { if (saveSlot(el.dataset.s)) toast(t('menu.saved')); wrap.querySelector('.modal-body').innerHTML = render(); },
+      save: (el) => { toast(t(saveSlot(el.dataset.s) ? 'menu.saved' : 'menu.saveFail')); wrap.querySelector('.modal-body').innerHTML = render(); },
       load: (el) => { const d = loadSlotData(el.dataset.s); if (d && UIState.onLoad) { close(); UIState.onLoad(d); } },
       export: () => exportSave(),
       import: async () => { const d = await importSave(); if (d && UIState.onLoad) { close(); UIState.onLoad(d); } else if (!d) toast(t('menu.importFail')); },

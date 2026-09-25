@@ -359,6 +359,8 @@ export class MapView {
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (const p of this.map.provinces) {
+      const [bx0, by0, bx1, by1] = p.bbox;
+      if (bx1 < this.vr[0] || bx0 > this.vr[2] || by1 < this.vr[1] || by0 > this.vr[3]) continue;
       if (!this.visible(p.id)) continue;
       const pos = this.map.towns[p.id];
       if (!pos || !pos.length) continue;
@@ -457,6 +459,11 @@ export class MapView {
       }
     }
     return out;
+  }
+
+  inView(px, py) {
+    const v = this.vr;
+    return !v || (px >= v[0] && px <= v[2] && py >= v[1] && py <= v[3]);
   }
 
   // ---------- Sichtbarkeit ----------
@@ -657,6 +664,9 @@ export class MapView {
     ctx.setTransform(z * dpr, 0, 0, z * dpr, -x * z * dpr, -y * z * dpr);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(this.composite || this.base, 0, 0);
+    // sichtbarer Ausschnitt (mit Rand) – alles außerhalb wird nicht gezeichnet
+    const mg = 80 / z;
+    this.vr = [x - mg, y - mg, x + this.vw / z + mg, y + this.vh / z + mg];
     if (!this.game) return;
     const g = this.game;
     // Auswahl
@@ -758,7 +768,7 @@ export class MapView {
       const fs = 11.5 / z;
       ctx.font = `600 ${fs}px "Cinzel", Georgia, serif`;
       for (const p of this.map.provinces) {
-        if (!this.visible(p.id)) continue;
+        if (!this.inView(p.lx, p.ly) || !this.visible(p.id)) continue;
         const name = L(PROVINCES[p.index].n);
         ctx.lineWidth = fs / 4; ctx.strokeStyle = 'rgba(245,235,205,0.8)';
         ctx.strokeText(name, p.lx, p.ly + 16 / z);
@@ -774,7 +784,7 @@ export class MapView {
     ctx.save();
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (const p of this.map.provinces) {
-      if (!this.visible(p.id)) continue;
+      if (!this.inView(p.x, p.y) || !this.visible(p.id)) continue;
       const info = g.cityInfo(p.id);
       const col = info.color;
       const r = (4 + Math.min(5, info.pop / 70)) * Math.max(0.6, Math.min(1.3, z * 1.2)) * s;
@@ -867,6 +877,7 @@ export class MapView {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (const slot of this.armyScreenSlots()) {
       const { a, x, y } = slot;
+      if (!this.inView(x, y)) continue;
       const col = g.facColor(a.fac);
       const sel = this.sel.army === a.id;
       // Stange

@@ -198,6 +198,7 @@ export function renderTopbar() {
     <div class="res" title="${esc(t('res.prestige'))}">⭐ <b>${fmt(f.prestige)}</b></div>
     <div class="res res-tech" title="${esc(t('res.research'))}" data-act="research">📜 ${cur ? `<span class="tech-mini">${esc(L(cur.n))}</span>${bar(rp, '#4a235a', 'mini')}` : `<span class="warn">${esc(t('res.noResearch'))}</span>`}</div>
     <div class="spacer"></div>
+    <div class="tb-break"></div>
     <nav class="menu-btns">
       <button data-act="diplomacy" title="${esc(t('ui.diplomacy'))}">🤝<span>${esc(t('ui.diplomacy'))}</span></button>
       <button data-act="research" title="${esc(t('ui.research'))}">📜<span>${esc(t('ui.research'))}</span></button>
@@ -212,6 +213,7 @@ export function renderTopbar() {
   document.documentElement.style.setProperty('--tbh', $('#topbar').offsetHeight + 'px');
 }
 
+let saveWarned = false;
 const MODES = ['political', 'control', 'terrain', 'religion', 'culture', 'special', 'diplomacy', 'order', 'trade'];
 function renderMapModes() {
   const m = UIState.map.mode;
@@ -435,7 +437,7 @@ export async function startOfTurn(startLog) {
     }
   }
   refreshAll();
-  saveAuto();
+  if (!saveAuto() && !saveWarned) { saveWarned = true; toast(t('menu.saveFail')); }
   // Bericht
   const entries = s.log.slice(startLog ?? s.log.length).filter((e) => (e.imp || e.f === s.player) && screens.logVisible(e));
   if (entries.length) await screens.turnReport(entries);
@@ -464,7 +466,7 @@ function provincePanel(pid) {
   const mine = p.owner === s.player;
   const tabs = mine ? ['info', 'towns', 'build', 'recruit'] : ['info', 'towns'];
   const tab = tabs.includes(UIState.tab) ? UIState.tab : 'info';
-  let html = `<div class="panel-head" style="--fc:${f.color}">
+  let html = `<div class="panel-head" data-act="panelToggle" style="--fc:${f.color}">
     <button class="panel-x" data-act="close">×</button>
     <div class="ptitle">${esc(L(d.n))} <small>${esc(L(d.city))}${f.capital === pid ? ' 👑' : ''}${d.holy ? ' ✦' : ''}</small></div>
     <div class="psub">${swatch(f.color)}<a data-act="dipWith" data-fac="${f.id}">${esc(L(f.n))}</a>${f.overlord ? ` <small>(${esc(t('dip.vassalOf', { fac: L(facName(f.overlord)) }))})</small>` : ''}</div>
@@ -663,7 +665,7 @@ function armyPanel(a) {
   const p = prov(a.prov);
   const m = UIState.map;
   const speed = armySpeed(a);
-  let html = `<div class="panel-head" style="--fc:${f.color}">
+  let html = `<div class="panel-head" data-act="panelToggle" style="--fc:${f.color}">
     <button class="panel-x" data-act="close">×</button>
     <div class="ptitle">⚑ ${esc(armyTitle(a))}</div>
     <div class="psub">${swatch(f.color)}${esc(L(f.n))} · <a data-act="selProv" data-p="${a.prov}">${esc(L(pdef(a.prov).n))}</a></div>
@@ -777,6 +779,7 @@ export function charBadge(c, extra = '') {
 
 const panelHandlers = {
   close: () => clearSelection(),
+  panelToggle: () => { if (window.innerWidth <= 820) $('#panel').classList.toggle('mini'); },
   tab: (el) => { UIState.tab = el.dataset.tab; renderPanel(); },
   focus: (el) => { if (setFocus(UIState.map.sel.prov, el.dataset.v)) { clearModCache(); refreshAll(false); } },
   dipWith: (el) => screens.diplomacyScreen(el.dataset.fac),
