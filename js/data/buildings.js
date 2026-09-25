@@ -24,7 +24,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Steigert Steuern und Handelseinnahmen.', tr: 'Vergi ve ticaret gelirini artırır.' },
     cost: [50, 120, 220], turns: [1, 2, 3], tech: [null, null, 'bazaar'],
-    eff: { tax: 0.1, trade: 0.15 },
+    eff: { tax: 0.2, trade: 0.25, cap: 0.05 },
   },
   caravanserai: {
     icon: '🐫',
@@ -35,7 +35,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Steigert die Einnahmen aus Handelsrouten, die durch die Provinz führen.', tr: 'Eyaletten geçen ticaret yollarının gelirini artırır.' },
     cost: [40, 110, 200], turns: [1, 2, 3], tech: [null, 'caravanserai', 'sakk'],
-    eff: { route: 0.4, goods: 0.05 },
+    eff: { route: 0.6, goods: 0.05 },
   },
   irrigation: {
     icon: '💧',
@@ -46,7 +46,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Mehr Ernte: höhere Bevölkerungsgrenze, Wachstum und Steuern.', tr: 'Daha fazla hasat: nüfus sınırı, büyüme ve vergi artar.' },
     cost: [50, 120, 200], turns: [2, 2, 3], tech: [null, 'qanat', 'windmill'],
-    eff: { cap: 0.15, growth: 0.001, tax: 0.04 },
+    eff: { cap: 0.2, growth: 0.0015, tax: 0.08 },
   },
   temple: {
     icon: '✧',
@@ -93,7 +93,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Das Zeltlager des Stammes (nur Nomaden und Sultanate). Reiterkrieger, Weideerträge und Stammestreue.', tr: 'Boyun çadır karargâhı (yalnızca göçebeler ve sultanlıklar). Atlı savaşçılar, otlak geliri ve boy sadakati.' },
     cost: [30, 90, 180], turns: [1, 2, 2], tech: [null, null, 'kurultai'],
-    eff: { pasture: 0.25, order: 2, horses: 1 }, govs: ['nomad', 'sultanate'],
+    eff: { pasture: 0.4, order: 2, horses: 1 }, govs: ['nomad', 'sultanate'],
   },
   workshop: {
     icon: '⚒',
@@ -104,7 +104,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Veredelt die Handelsgüter der Provinz.', tr: 'Eyaletin ticaret mallarını işler.' },
     cost: [60, 140, 240], turns: [2, 2, 3], tech: [null, 'paper', 'mathematics'],
-    eff: { goods: 0.25, tax: 0.05 },
+    eff: { goods: 0.4, tax: 0.1 },
   },
   palace: {
     icon: '🏛',
@@ -115,7 +115,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Sitz der Verwaltung. Mehr Ordnung und Steuern, weniger Abstand zur Hauptstadt.', tr: 'Yönetim merkezi. Daha fazla asayiş ve vergi, başkente uzaklığın etkisi azalır.' },
     cost: [80, 180, 320], turns: [2, 3, 4], tech: [null, 'diwan', 'vizierate'],
-    eff: { order: 5, tax: 0.05, dist: 0.3 },
+    eff: { order: 5, tax: 0.1, dist: 0.3 },
   },
   port: {
     icon: '⚓',
@@ -126,7 +126,7 @@ export const BUILDINGS = {
     ],
     desc: { de: 'Seehandel (nur Küstenprovinzen).', tr: 'Deniz ticareti (yalnızca kıyı eyaletleri).' },
     cost: [60, 140, 240], turns: [2, 2, 3], tech: [null, 'caravanserai', 'sakk'],
-    eff: { trade: 0.2, goods: 0.1 }, portOnly: true,
+    eff: { trade: 0.3, goods: 0.15 }, portOnly: true,
   },
 };
 

@@ -151,10 +151,10 @@ export function provinceIncome(pid, baseOnly = false) {
     + ((se.flat || 0) * ordF * dev * besieged);
 
   const nTrade = G.tradeCount?.[f.id] || 0;
-  const tradeF = (1 + Math.min(0.5, nTrade * 0.08)) * (1 + m.trade + (b.market || 0) * 0.15 + (b.port || 0) * 0.2);
+  const tradeF = (1 + Math.min(0.5, nTrade * 0.08)) * (1 + m.trade + (b.market || 0) * BUILDINGS.market.eff.trade + (b.port || 0) * BUILDINGS.port.eff.trade);
   let goods = 0;
   for (const g of [...d.goods, ...(p.extraGoods || [])]) {
-    let v = GOODS[g].value * goodPrice(f.id, g) * (1 + m.goods + (b.workshop || 0) * 0.25 + (b.caravanserai || 0) * 0.05 + (b.port || 0) * 0.1 + (se.goods || 0) + (fe.goods || 0));
+    let v = GOODS[g].value * goodPrice(f.id, g) * (1 + m.goods + (b.workshop || 0) * BUILDINGS.workshop.eff.goods + (b.caravanserai || 0) * BUILDINGS.caravanserai.eff.goods + (b.port || 0) * BUILDINGS.port.eff.goods + (se.goods || 0) + (fe.goods || 0));
     if (MINING_GOODS.includes(g)) v *= 1 + m.mining;
     goods += v;
   }
@@ -173,11 +173,11 @@ export function provinceIncome(pid, baseOnly = false) {
       if (G.s.provinces[q].siege) safety -= 0.15;
     }
     const boom = G.s.routeBoom?.id === rid ? 1.6 : 1;
-    route += boom * r.value * (1 + m.route + (b.caravanserai || 0) * 0.4 + (se.route || 0) + (fe.route || 0)) * Math.max(0.2, safety) * (p.plague ? 0.6 : 1);
+    route += boom * r.value * (1 + m.route + (b.caravanserai || 0) * BUILDINGS.caravanserai.eff.route + (se.route || 0) + (fe.route || 0)) * Math.max(0.2, safety) * (p.plague ? 0.6 : 1);
   }
   route *= 0.6 * tradeF * dev * besieged;
 
-  const pasture = TERRAINS[d.terrain].pasture * (1 + (b.ordu || 0) * 0.25) * (1 - p.devast) * (p.drought > 0 ? 0.45 : 1);
+  const pasture = TERRAINS[d.terrain].pasture * (1 + (b.ordu || 0) * BUILDINGS.ordu.eff.pasture) * (1 - p.devast) * (p.drought > 0 ? 0.45 : 1);
   const pastureGold = pasture * gov.pastureGold * 1.4;
   const horses = (pasture * gov.horsesMult * 0.6 + (se.horses || 0)) * (1 + m.horses) + (b.stables || 0) * 1.5 + (b.ordu || 0) * 1;
   const research = ([0, 0.75, 1.25, 2][b.school || 0] + (se.research || 0) * ordF) * (1 + m.research) * gov.researchMult;
@@ -243,13 +243,13 @@ export function factionIncome(fid) {
   const provs = factionProvinces(fid);
   let levels = 0;
   for (const pid of provs) for (const k in G.s.provinces[pid].buildings) levels += G.s.provinces[pid].buildings[k];
-  r.admin = levels * 0.3 + Math.pow(provs.length, 1.3) * 0.5;
+  r.admin = levels * ADMIN_PER_LEVEL + Math.pow(provs.length, 1.3) * 0.5;
   // Große Schatzkammern verleiten zu Verschwendung und Unterschlagung
   // Prunk des Hofes wächst mit dem Reichtum
-  r.admin += Math.max(0, gross - 250) * 0.15;
+  r.admin += courtCost(gross);
   const cap = 800 + provs.length * 60;
   const g = fac(fid).gold;
-  if (g > cap) r.admin += (Math.min(g, cap * 2) - cap) * 0.1 + Math.max(0, g - cap * 2) * 0.2;
+  if (g > cap) r.admin += (Math.min(g, cap * 2) - cap) * 0.15 + Math.max(0, g - cap * 2) * 0.3;
   r.research *= (1 + m.research) * gov.researchMult;
   // Kredite und Zahlungsverträge
   r.loans = loanPayments(fid);
@@ -334,8 +334,8 @@ function processProvince(pid) {
   p.garrison = Math.min(1, p.garrison + (p.siege ? 0 : 0.15));
   // Bevölkerung
   const se = specialtyEff(pid), fe = focusEff(pid);
-  const cap = p.basePop * (1.2 + (b.irrigation || 0) * 0.15 + (b.market || 0) * 0.05 + (se.cap || 0) + (fe.cap || 0));
-  const growth = (0.003 + TERRAINS[d.terrain].fert * 0.0008 + (b.irrigation || 0) * 0.001 + m.growth + (se.growth || 0)) * (fe.growthMult || 1);
+  const cap = popCap(pid);
+  const growth = (0.003 + TERRAINS[d.terrain].fert * 0.0008 + (b.irrigation || 0) * BUILDINGS.irrigation.eff.growth + m.growth + (se.growth || 0)) * (fe.growthMult || 1);
   if (p.pop < cap) p.pop += p.pop * growth * (1 - p.pop / cap) * 4 * (1 - p.devast);
   else p.pop -= (p.pop - cap) * 0.02;
   if (p.siege) p.pop *= 0.985;
@@ -391,6 +391,22 @@ export function convertProvince(p, religion, rate) {
     if (p.rel[r] < 0.005) { moved += p.rel[r]; delete p.rel[r]; }
   }
   p.rel[religion] = cur + moved;
+}
+
+// Prunk des Hofes: gestaffelt nach Bruttoeinnahmen (15 % ab 250, 25 % ab 600, 35 % ab 1000)
+export function courtCost(gross) {
+  return Math.max(0, Math.min(gross, 600) - 250) * 0.15 + Math.max(0, Math.min(gross, 1000) - 600) * 0.25 + Math.max(0, gross - 1000) * 0.35;
+}
+export function courtRate(gross) { return gross > 1000 ? 0.35 : gross > 600 ? 0.25 : gross > 250 ? 0.15 : 0; }
+
+// Verwaltungskosten je Gebäudestufe (Gold pro Runde)
+export const ADMIN_PER_LEVEL = 0.2;
+
+// Bevölkerungsgrenze einer Provinz
+export function popCap(pid) {
+  const p = prov(pid), b = p.buildings;
+  const se = specialtyEff(pid), fe = focusEff(pid);
+  return p.basePop * (1.2 + (b.irrigation || 0) * BUILDINGS.irrigation.eff.cap + (b.market || 0) * BUILDINGS.market.eff.cap + (se.cap || 0) + (fe.cap || 0));
 }
 
 // ---------- Bauen ----------

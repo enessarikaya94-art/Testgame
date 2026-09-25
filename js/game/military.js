@@ -1,6 +1,6 @@
 // Heere: Bewegung, Wegfindung, Belagerung, Plünderung, Versorgung.
 
-import { G, fac, prov, pdef, army, chr, neighbors, atWar, hasAccess, armiesIn, factionProvinces, log, provName, cityName, setOwner, rel, rng, wallBonus, facName, bumpAlive } from './state.js';
+import { G, fac, prov, pdef, army, chr, neighbors, atWar, hasAccess, armiesIn, factionProvinces, log, provName, cityName, setOwner, rel, rng, wallBonus, facName, bumpAlive, allied } from './state.js';
 import { TERRAINS, GOVERNMENTS, CULTURES } from '../data/world.js';
 import { UNITS, UNIT_CLASSES, CULTURE_ARMY } from '../data/units.js';
 import { resolveBattle, garrisonUnits } from './battle.js';
@@ -352,6 +352,17 @@ export async function captureProvince(pid, fid, how) {
   const p = prov(pid);
   const oldOwner = p.owner;
   if (oldOwner === fid) return;
+  // Vasallen und Verbündete befreien aufständisches Land für den früheren Herrn, statt es zu behalten
+  const lord = p.lastOwner;
+  if (oldOwner === 'rebels' && lord && lord !== fid && s.factions[lord]?.alive && !atWar(fid, lord)
+    && (fac(fid).overlord === lord || allied(fid, lord))) {
+    setOwner(pid, lord, true);
+    for (const a of armiesIn(pid)) if (a.fac === fid) a.siegeOf = null;
+    rel(fid, lord).mod += 5;
+    fac(fid).prestige += 2;
+    log('log.provFreed', { prov: provName(pid), fac: facName(fid), lord: facName(lord) }, { f: lord, imp: lord === s.player || fid === s.player });
+    return 'occupy';
+  }
   let choice = 'occupy';
   if (fid === s.player && G.ui?.chooseCapture) {
     choice = await G.ui.chooseCapture({ prov: pid, from: oldOwner, how });

@@ -1,7 +1,7 @@
 // Hauptoberfläche im Spiel: Leiste, Kartenmodi, Auswahlpanel, Dialoge.
 
 import { G, fac, prov, pdef, chr, army, factionProvinces, factionArmies, armiesIn, atWar, relPeek, opinion, facName, provName, aliveFactions, ROUTES_BY_PROV, END_YEAR } from '../game/state.js';
-import { orderBreakdown, provinceIncome, factionIncome, buildOptions, startBuilding, recruitOptions, recruit, recruitLimit, religionShare, getMods, clearModCache } from '../game/economy.js';
+import { orderBreakdown, provinceIncome, factionIncome, buildOptions, startBuilding, recruitOptions, recruit, recruitLimit, religionShare, getMods, clearModCache, popCap, ADMIN_PER_LEVEL, courtRate } from '../game/economy.js';
 import { findPath, findRoute, advanceArmy, setStance, STANCES, pathTurns, moveArmy, assault, armyMen, armySpeed, mergeArmies, splitArmy, assignGeneral, garrisonPower, armyPower, siegeNeeded, effectiveWalls, isCavalryOnly } from '../game/military.js';
 import { TACTICS } from '../game/battle.js';
 import { endTurn, isBusy, refreshCaches, goalStatus } from '../game/turn.js';
@@ -148,6 +148,7 @@ export function initGameUI(map) {
   delegate($('#topbar'), {
     endturn: () => doEndTurn(),
     faction: () => screens.factionScreen(),
+    wars: () => screens.warScreen(),
     diplomacy: () => screens.diplomacyScreen(),
     research: () => screens.researchScreen(),
     dynasty: () => screens.dynastyScreen(),
@@ -190,6 +191,7 @@ export function renderTopbar() {
   const cur = f.research.cur ? TECHS[f.research.cur] : null;
   const rp = cur ? Math.min(1, f.research.pts / techCost(cur, f.techs.length)) : 0;
   const netNow = factionIncome(f.id).net;
+  const nWars = aliveFactions().filter((x) => x.id !== s.player && x.id !== 'rebels' && atWar(s.player, x.id)).length;
   $('#topbar').innerHTML = `
     <button class="fac-btn" data-act="faction" title="${esc(t('ui.faction'))}">${swatch(f.color)}<span class="fac-name">${esc(L(f.n))}</span><span class="ruler-name">${ruler ? esc(L(ruler.n)) : ''}</span></button>
     <div class="date" title="${esc(t('ui.turn'))} ${s.turn}"><b>${esc(L(SEASONS[s.season]))}</b> ${s.year}</div>
@@ -200,6 +202,7 @@ export function renderTopbar() {
     <div class="spacer"></div>
     <div class="tb-break"></div>
     <nav class="menu-btns">
+      <button data-act="wars" class="${nWars ? 'atwar' : ''}" title="${esc(t('war.title'))}">⚔<span>${esc(t('war.short'))}</span>${nWars ? `<b class="badge">${nWars}</b>` : ''}</button>
       <button data-act="diplomacy" title="${esc(t('ui.diplomacy'))}">🤝<span>${esc(t('ui.diplomacy'))}</span></button>
       <button data-act="research" title="${esc(t('ui.research'))}">📜<span>${esc(t('ui.research'))}</span></button>
       <button data-act="dynasty" title="${esc(t('ui.dynasty'))}">👑<span>${esc(t('ui.dynasty'))}</span></button>
@@ -609,6 +612,61 @@ export function specEffText(sp) {
   return out.join(' · ');
 }
 
+// Konkreter Nutzen eines Ausbaus: Provinz vor und nach dem Bau vergleichen
+function buildingPreview(pid, bid) {
+  const p = prov(pid), f = fac(p.owner);
+  const cur = p.buildings[bid] || 0;
+  if (cur >= 3) return null;
+  const unlocked = () => new Set(recruitOptions(f.id, pid).filter((o) => o.reason !== 'r.building' && o.reason !== 'r.tech').map((o) => o.id));
+  const snap = () => {
+    const i = provinceIncome(pid);
+    return {
+      gold: i.tax + i.goods + i.route + i.pasture, taxPop: i.tax / Math.max(1, p.pop), horses: i.horses, research: i.research,
+      order: orderBreakdown(pid).total, cap: popCap(pid), recruit: recruitLimit(pid),
+      siege: siegeNeeded(pid), gar: garrisonPower(pid), units: unlocked(),
+    };
+  };
+  const a = snap();
+  p.buildings[bid] = cur + 1;
+  let b;
+  try { b = snap(); } finally { if (cur) p.buildings[bid] = cur; else delete p.buildings[bid]; }
+  // Hof und Verwaltung kosten je Gebäudestufe etwas Gold
+  // Reiche Höfe verprassen einen Teil jeder Mehreinnahme
+  const keep = 1 - courtRate(f.last?.gross || 0);
+  const gold = (b.gold - a.gold) * keep - ADMIN_PER_LEVEL;
+  const out = [];
+  const num = (v, dp = 1) => (v > 0 ? '+' : '') + v.toFixed(dp).replace('.', ',');
+  if (Math.abs(gold) >= 0.05) out.push({ cls: gold > 0 ? 'pos' : 'neg', txt: `💰 ${num(gold)} ${t('bp.perTurn')}` });
+  if (b.horses - a.horses >= 0.05) out.push({ cls: 'pos', txt: `🐎 ${num(b.horses - a.horses)} ${t('bp.perTurn')}` });
+  if (b.research - a.research >= 0.05) out.push({ cls: 'pos', txt: `📜 ${num(b.research - a.research)} ${t('bp.perTurn')}` });
+  if (Math.abs(b.order - a.order) >= 0.5) out.push({ cls: 'pos', txt: `⚖ ${t('bp.order', { n: num(b.order - a.order, 0) })}` });
+  // Mehr Platz für Menschen: Steuern steigen, sobald die Bevölkerung nachwächst
+  const later = Math.max(0, (b.cap - a.cap) * b.taxPop * keep);
+  if (b.cap - a.cap >= 1) out.push({ cls: 'pos', txt: `👥 ${t('bp.cap', { n: num(b.cap - a.cap, 0) })}` });
+  if (later >= 0.05) out.push({ cls: 'pos', txt: `📈 ${t('bp.later', { n: num(later) })}` });
+  if (b.recruit > a.recruit) out.push({ cls: 'pos', txt: `⚔ ${t('bp.recruit', { n: b.recruit - a.recruit })}` });
+  if (b.siege > a.siege) out.push({ cls: 'pos', txt: `🏰 ${t('bp.siege', { a: a.siege, b: b.siege })}` });
+  if (b.gar > a.gar * 1.02) out.push({ cls: 'pos', txt: `🛡 ${t('bp.garrison', { n: Math.round((b.gar / Math.max(1, a.gar) - 1) * 100) })}` });
+  if (BUILDINGS[bid].eff.convert) out.push({ cls: 'pos', txt: `✧ ${t('bp.convert')}` });
+  if (BUILDINGS[bid].eff.growth) out.push({ cls: 'pos', txt: `🌾 ${t('bp.growth')}` });
+  const newUnits = [...b.units].filter((u) => !a.units.has(u));
+  if (newUnits.length) out.push({ cls: 'pos', txt: `🆕 ${newUnits.map((u) => L(UNITS[u].n)).join(', ')}` });
+  const cost = buildOptions(pid).find((o) => o.id === bid)?.cost || 0;
+  const total = gold + later;
+  const payback = total > 0.05 ? Math.ceil(cost / total) : null;
+  return { lines: out, payback, gold };
+}
+
+function previewHtml(pid, o) {
+  if (o.cur >= 3) return '';
+  const pv = buildingPreview(pid, o.id);
+  if (!pv) return '';
+  const lines = pv.lines.length ? pv.lines.map((l) => `<span class="${l.cls}">${esc(l.txt)}</span>`).join(' · ') : `<span class="muted">${esc(t('bp.none'))}</span>`;
+  const when = o.turns === 1 ? t('bp.from1') : t('bp.from', { n: o.turns });
+  const pay = pv.payback ? ` · ${t(pv.payback <= 40 ? 'bp.payback' : 'bp.paybackLong', { n: pv.payback })}` : '';
+  return `<div class="bprev"><small>${lines}</small><br><small class="muted">${esc(when + pay)}</small></div>`;
+}
+
 function buildTab(pid) {
   const p = prov(pid), f = fac(p.owner);
   let html = '';
@@ -621,7 +679,7 @@ function buildTab(pid) {
     if (o.reason === 'b.tech') reason = t('b.tech', { tech: L(TECHS[o.tech].n) });
     else if (o.reason) reason = t(o.reason);
     html += `<div class="opt ${o.ok ? '' : 'dis'}">
-      <div class="opt-main"><span class="ico">${bd.icon}</span><div><b>${esc(L(name))}</b> ${o.cur ? `<small>(${esc(t('build.level'))} ${o.cur}${o.cur < 3 ? '→' + o.level : ''})</small>` : ''}<br><small class="muted">${esc(L(bd.desc))}</small></div></div>
+      <div class="opt-main"><span class="ico">${bd.icon}</span><div><b>${esc(L(name))}</b> ${o.cur ? `<small>(${esc(t('build.level'))} ${o.cur}${o.cur < 3 ? '→' + o.level : ''})</small>` : ''}<br><small class="muted">${esc(L(bd.desc))}</small>${previewHtml(pid, o)}</div></div>
       <div class="opt-side">${o.cur < 3 ? `<small>💰${o.cost} · ⏳${o.turns}</small>` : ''}
       ${o.ok ? `<button data-act="build" data-b="${o.id}">${esc(t('build.do'))}</button>` : reason ? `<small class="neg">${esc(reason)}</small>` : ''}</div>
     </div>`;

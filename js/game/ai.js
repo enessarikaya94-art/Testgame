@@ -225,8 +225,18 @@ function aiDiplomacy(f) {
 const BUILD_VALUE = {
   market: 1.3, irrigation: 1.1, temple: 0.9, school: 0.8, walls: 0.7, barracks: 0.7, stables: 0.7, ordu: 1.0, caravanserai: 0.9, workshop: 0.9, palace: 0.6, port: 0.8,
 };
-function aiTownUpgrades(f, budget) {
-  if (budget < 120 || !rng().chance(0.2 + f.ai.build * 0.3)) return 0;
+function aiTownUpgrades(f, budget, rich) {
+  let spent = 0;
+  for (let k = 0; k < (rich ? 3 : 1); k++) {
+    const c = aiTownUpgrade(f, budget - spent, rich);
+    if (!c) break;
+    spent += c;
+  }
+  return spent;
+}
+
+function aiTownUpgrade(f, budget, rich) {
+  if (budget < 120 || (!rich && !rng().chance(0.2 + f.ai.build * 0.3))) return 0;
   let best = null, bv = 0;
   const cands = [];
   for (const pid of factionProvinces(f.id)) townsOf(pid).forEach((t, i) => { if (t.owner === f.id) cands.push([pid, i]); });
@@ -248,9 +258,11 @@ function aiBuild(f) {
   const provs = factionProvinces(f.id);
   const reserve = 60 + provs.length * 15;
   let budget = f.gold - reserve;
-  budget -= aiTownUpgrades(f, budget);
+  // Volle Schatzkammer: Überschuss investieren, statt ihn der Verschwendung zu überlassen
+  const rich = f.gold > 800 + provs.length * 60;
+  budget -= aiTownUpgrades(f, budget, rich);
   let built = 0;
-  const maxBuild = f.gold > reserve * 4 ? 4 : 2;
+  const maxBuild = rich ? Math.max(4, Math.ceil(provs.length / 3)) : f.gold > reserve * 4 ? 4 : 2;
   if (budget < 40) return;
   const options = [];
   for (const pid of provs) {

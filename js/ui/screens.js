@@ -566,6 +566,69 @@ function peaceDialog(other) {
   });
 }
 
+// ---------- Kriegsübersicht ----------
+export function warScreen() {
+  const render = () => {
+    const s = G.s, me = s.player, f = fac(me);
+    const enemies = aliveFactions().filter((x) => x.id !== me && x.id !== 'rebels' && atWar(me, x.id));
+    let html = `<h2>⚔ ${esc(t('war.title'))}</h2>`;
+    html += `<p class="center small">${esc(t('war.weariness'))}: <b>${Math.round(f.warWeariness)}</b>${Math.round(f.warWeariness * 0.3) ? ` <span class="neg">(${esc(t('war.wearOrder', { n: Math.round(f.warWeariness * 0.3) }))})</span>` : ''} · ${esc(t('fac.infamy'))}: <b>${Math.round(f.infamy)}</b>${f.infamy > 25 ? ` <span class="neg">(${esc(t('war.coalitionRisk'))})</span>` : ''}</p>`;
+    const rebels = Object.values(s.provinces).filter((p) => p.owner === 'rebels' && p.lastOwner === me).length
+      + Object.values(s.provinces).reduce((n, p) => n + (p.owner === me ? (p.towns || []).filter((tw) => tw.owner === 'rebels').length : 0), 0);
+    if (rebels) html += `<div class="note neg">🔥 ${esc(t('war.rebels', { n: rebels }))}</div>`;
+    if (!enemies.length) html += `<p class="center">${esc(t('war.none'))}</p>`;
+    for (const e of enemies) {
+      const r = relPeek(me, e.id);
+      const ws = warScore(me, e.id);
+      const dur = s.turn - (r?.warStart || s.turn);
+      const white = peaceAcceptance(me, e.id, {}) > 0;
+      const mySieges = [], theirSieges = [];
+      for (const pid in s.provinces) {
+        const p = s.provinces[pid];
+        const name = L(provName(pid));
+        if (p.siege) {
+          if (p.siege.fac === me && p.owner === e.id) mySieges.push([pid, `👑 ${name} ${p.siege.turns}/${p.siege.needed}`]);
+          if (p.siege.fac === e.id && p.owner === me) theirSieges.push([pid, `👑 ${name} ${p.siege.turns}/${p.siege.needed}`]);
+        }
+        (p.towns || []).forEach((tw, i) => {
+          if (!tw.siege) return;
+          const tn = `${L(townName(pid, i))} (${name}) ${tw.siege.turns}/${tw.siege.needed}`;
+          if (tw.siege.fac === me && tw.owner === e.id) mySieges.push([pid, tn]);
+          if (tw.siege.fac === e.id && tw.owner === me) theirSieges.push([pid, tn]);
+        });
+      }
+      const intruders = factionArmies(e.id).filter((a) => a.units.length && prov(a.prov).owner === me);
+      const wsCls = ws > 15 ? 'pos' : ws < -15 ? 'neg' : '';
+      const wsText = ws > 40 ? t('war.wsWinning') : ws > 15 ? t('war.wsAhead') : ws < -40 ? t('war.wsLosing') : ws < -15 ? t('war.wsBehind') : t('war.wsEven');
+      const pct = clamp(50 + ws / 2, 0, 100);
+      const link = ([pid, txt]) => `<a data-act="goto" data-p="${pid}">${esc(txt)}</a>`;
+      html += `<div class="warcard">
+        <div class="dhead">${swatch(e.color)}<h3>${esc(L(e.n))}</h3> <small class="muted">${esc(t('war.since', { n: dur }))}</small></div>
+        <div><b>${esc(t('dip.warscore'))}: <span class="${wsCls}">${signed(ws)}</span></b> – ${esc(wsText)}
+          <div class="wsbar"><span style="left:${pct}%"></span></div></div>
+        <table class="kv small">
+          <tr><th>${esc(t('dip.power'))}</th><td>${powerCompare(militaryPower(me), militaryPower(e.id))}</td></tr>
+          <tr><th>${esc(t('war.mySieges'))}</th><td>${mySieges.length ? mySieges.map(link).join(', ') : '—'}</td></tr>
+          <tr><th>${esc(t('war.theirSieges'))}</th><td class="${theirSieges.length ? 'neg' : ''}">${theirSieges.length ? theirSieges.map(link).join(', ') : '—'}</td></tr>
+          <tr><th>${esc(t('war.intruders'))}</th><td class="${intruders.length ? 'neg' : ''}">${intruders.length ? intruders.map((a) => `<a data-act="goto" data-p="${a.prov}">${esc(L(provName(a.prov)))} (${fmt(a.units.reduce((n, u) => n + UNITS[u.t].size * u.hp, 0))})</a>`).join(', ') : '—'}</td></tr>
+          <tr><th>${esc(t('war.whitePeace'))}</th><td>${white ? `<span class="pos">${esc(t('war.wouldAccept'))}</span>` : `<span class="neg">${esc(t('war.wouldRefuse'))}</span>`}</td></tr>
+        </table>
+        <div class="actions"><button class="primary" data-act="peace" data-f="${e.id}">🕊 ${esc(t('war.negotiate'))}</button><button data-act="dip" data-f="${e.id}">🤝 ${esc(t('ui.diplomacy'))}</button></div>
+      </div>`;
+    }
+    html += `<details class="warguide" ${enemies.length ? '' : 'open'}><summary>${esc(t('war.guideTitle'))}</summary>${t('war.guide')}</details>`;
+    return html;
+  };
+  return openModal(render(), {
+    wide: true,
+    handlers: (close) => ({
+      peace: (el) => { close(); peaceDialog(el.dataset.f).then(() => refreshAll()); },
+      dip: (el) => { close(); diplomacyScreen(el.dataset.f); },
+      goto: (el) => { close(); UIState.map.centerOn(el.dataset.p, 1.2); selectProvince(el.dataset.p); },
+    }),
+  });
+}
+
 // ---------- Forschung ----------
 export function researchScreen() {
   const render = () => {

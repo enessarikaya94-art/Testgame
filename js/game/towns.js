@@ -179,6 +179,17 @@ export function captureTown(pid, i, fid, how = 'siege') {
   const t = townsOf(pid)[i];
   if (!t) return;
   const from = t.owner;
+  const lord = prov(pid).owner;
+  // Befreiung: Wer einen aufständischen Ort im Land einer Macht einnimmt, mit der er nicht im Krieg liegt
+  // (Vasall, Verbündeter, Durchziehender), gibt ihn dem Landesherrn zurück.
+  if (from === 'rebels' && lord && lord !== fid && lord !== 'rebels' && s.factions[lord]?.alive && !atWar(fid, lord)) {
+    setTownOwner(pid, i, lord, 'transfer');
+    const f = fac(fid);
+    if (f) f.prestige += 1;
+    rel(fid, lord).mod += 3;
+    log('log.townFreed', { town: townName(pid, i), prov: provName(pid), fac: facName(fid), lord: facName(lord) }, { f: lord, imp: lord === s.player || fid === s.player });
+    return;
+  }
   setTownOwner(pid, i, fid, how);
   const f = fac(fid);
   if (f) {
