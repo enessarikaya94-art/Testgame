@@ -267,8 +267,8 @@ export function beginSieges() {
     const target = siegeTargetOf(a);
     if (target === null) continue;
     if (target === 'capital') {
-      const defenders = armiesIn(a.prov).filter((x) => x.fac === p.owner || (x.fac !== a.fac && !atWar(x.fac, p.owner) && atWar(x.fac, a.fac)));
-      if (defenders.some((x) => x.units.length)) continue;
+      const defenders = armiesIn(a.prov).filter((x) => x.units.length && (x.fac === p.owner || (x.fac !== a.fac && !atWar(x.fac, p.owner) && atWar(x.fac, a.fac))));
+      if (defenders.length && !withdrawBehindWalls(a, defenders, p.owner)) continue;
       if (!p.siege || !atWar(p.siege.fac, p.owner)) {
         p.siege = { fac: a.fac, turns: 0, needed: siegeNeeded(a.prov) };
         a.siegeOf = a.prov;
@@ -277,13 +277,36 @@ export function beginSieges() {
       continue;
     }
     const t = townsOf(a.prov)[target];
-    if (townDefenders(a.prov, target).length) continue;
+    const tdef = townDefenders(a.prov, target);
+    if (tdef.length && !withdrawBehindWalls(a, tdef, t.owner)) continue;
     if (!t.siege || !atWar(t.siege.fac, t.owner)) {
       t.siege = { fac: a.fac, turns: 0, needed: townSiegeNeeded(a.prov, target) };
       a.siegeOf = a.prov;
       if (t.owner === s.player) log('log.townSiege', { town: townName(a.prov, target), prov: provName(a.prov), fac: facName(a.fac) }, { f: t.owner, imp: true });
     }
   }
+}
+
+// Verteidiger, die einem Belagerer im offenen Feld nicht gewachsen sind, ziehen sich hinter die Mauern
+// zurück und verstärken die Garnison. So kann ein einzelnes Aufgebot keine Belagerung verhindern.
+function withdrawBehindWalls(a, defenders, owner) {
+  const pid = a.prov;
+  const besiegers = armiesIn(pid).filter((x) => x.units.length && (x.fac === a.fac || (atWar(x.fac, owner) && !atWar(x.fac, a.fac))));
+  const ap = besiegers.reduce((n, x) => n + armyPower(x), 0);
+  const dp = defenders.reduce((n, x) => n + armyPower(x), 0);
+  if (dp > ap * 0.45 || defenders.some((d) => d.fac !== owner)) return false;
+  for (const d of defenders) shelterArmy(d, pid);
+  return true;
+}
+
+// Ein Heer geht in der Garnison der eigenen Stadt auf
+export function shelterArmy(d, pid) {
+  const p = prov(pid);
+  const men = armyMen(d);
+  p.garrison = Math.min(1, p.garrison + Math.min(0.5, men / 4000));
+  if (d.gen && G.s.chars[d.gen]) G.s.chars[d.gen].army = null;
+  delete G.s.armies[d.id];
+  if (d.fac === G.s.player || p.owner === G.s.player) log('log.shelter', { prov: provName(pid), fac: facName(d.fac) }, { f: d.fac, imp: true });
 }
 
 export function checkSiegeLifted(pid) {

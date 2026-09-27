@@ -88,6 +88,18 @@ const DE = {
 <tr><td>Plünderung</td><td>+2 je Runde</td></tr></table>
 <p><b>Kriegsmüdigkeit</b> steigt mit jeder Kriegsrunde, jeder verlorenen Schlacht und jeder verlorenen Provinz. Sie senkt die Ordnung im ganzen Reich. Ein Frieden baut sie ab.</p>
 <p><b>Aufständische</b> sind immer feindlich. Holt ein Vasall oder Verbündeter aufständisches Land zurück, gibt er es dir wieder.</p>`,
+  'log.autoBuild': 'Automatischer Ausbau: {n} Vorhaben begonnen – {items}.',
+  'auto.title': 'Automatischer Ausbau',
+  'ui.on': 'An',
+  'ui.off': 'Aus',
+  'auto.towns': '🤖 Die Orte dieser Provinz werden automatisch ausgebaut.',
+  'auto.on': '🤖 Automatisch ausbauen',
+  'auto.hint': 'Diese Provinz baut zu Beginn jeder Runde selbst Gebäude und Orte aus. Sie wählt, was am meisten bringt, solange dein Gold über der Reserve liegt.',
+  'auto.reserve': 'Goldreserve',
+  'auto.all': 'Alle Provinzen automatisch',
+  'auto.none': 'Automatik überall aus',
+  'auto.count': '{n} von {m} Provinzen bauen automatisch',
+  'auto.badge': '🤖 Auto',
   'bp.perTurn': 'je Runde',
   'bp.order': 'Ordnung {n}',
   'bp.cap': 'Bevölkerungsgrenze {n}',
@@ -645,6 +657,7 @@ const DE = {
   'ord.divided': 'Fremde Orte in der Provinz',
   'op.contested': 'Umstrittene Provinzen',
   'log.townTaken': '{fac} hat {town} ({prov}) von {from} erobert.',
+  'log.shelter': 'Das Heer von {fac} hat sich hinter die Mauern von {prov} zurückgezogen und verstärkt die Garnison.',
   'log.townFreed': '{fac} hat {town} ({prov}) von Aufständischen befreit und {lord} zurückgegeben.',
   'log.provFreed': '{fac} hat {prov} von Aufständischen befreit und {lord} zurückgegeben.',
   'log.fullControl': 'Ganz {prov} ist nun in unserer Hand!',
@@ -694,7 +707,7 @@ const DE = {
 <h3>Die bekannte Welt</h3><p>Die Karte reicht vom Atlantik bis Korea und von Skandinavien bis zum Niger. Zu Beginn kennt jedes Reich nur seine Heimat und die Länder an seinen Grenzen; alles andere liegt unter dem Nebel der <b>Terra incognita</b>. Fremde Weltgegenden (Abendland, Ferner Osten, Afrika bzw. Orient) werden entdeckt durch gemeinsame Grenzen, Eroberung, Krieg, Handel und Bündnisse mit Mächten, die sie schon kennen, durch Reisende und Ereignisse wie die Kreuzzüge sowie durch Forschung: <i>Gesandte ins Abendland</i>, <i>Gesandte an den Kaiserhof</i>, <i>Karawanen durch die Sahara</i>, <i>Pilger ins Morgenland</i> und die <i>Weltkarte des al-Idrisi</i>. Unbekanntes Land kann nicht betreten werden, und manche Erfindungen (Schießpulver, Kompass, Blockdruck, Dreifelderwirtschaft, Langbogen) setzen Kontakt mit ihrem Ursprungsland voraus. Welche Gegenden du kennst, zeigt das Fraktionsfenster.</p>
 <h3>Städte, Burgen und Kontrolle</h3><p>Jede Provinz besteht aus ihrer <b>Hauptstadt</b> und 2–4 weiteren Orten: Städte, Marktflecken, Häfen, Burgen, Bergwerke, Klöster/Ribats, Karawansereien, Weidelager und Wallfahrtsorte. Jeder Ort bringt eigene Erträge und kann ausgebaut werden (3 Stufen). Wer die Hauptstadt erobert, erhält die Provinz, doch stark befestigte Orte halten sich als <b>Enklaven</b> und müssen einzeln belagert oder gestürmt werden. Offene Orte ohne Mauern fallen jedem Feindheer von selbst zu. Wer <b>alle</b> Orte einer Provinz hält, bekommt +8 % Einnahmen und +4 Ordnung; fremde Orte kosten je 10 % Einnahmen und 6 Ordnung, verschlechtern die Beziehungen und sind ein Kriegsgrund. Burgen versorgen eigene Heere, erlauben zusätzliche Aushebungen und stützen die belagerte Hauptstadt durch Ausfälle. Orte können gekauft, verkauft oder als Geschenk abgetreten werden; beim Frieden behält der Sieger seine Enklaven und erhält die des Verlierers im eigenen Land zurück. In unruhigen Provinzen können Orte zu den Aufständischen überlaufen. Der Kartenmodus <i>Kontrolle</i> zeigt geteilte Provinzen, der Reiter <i>Städte</i> alle Orte einer Provinz.</p>
 <h3>Runden</h3><p>Eine Runde ist eine Jahreszeit. Im Winter kämpfen und marschieren sesshafte Heere schlechter, Nomaden kaum. Mit <b>Runde beenden</b> (Enter) handeln alle anderen Reiche.</p>
-<h3>Provinzen</h3><p>Klicke eine Provinz an. Im Reiter <b>Bauen</b> errichtest du Märkte, Kanate, Moscheen, Madrasas, Mauern, Stallungen oder eine Ordu. Im Reiter <b>Rekrutieren</b> wirbst du Truppen an. Welche Truppen es gibt, hängt von deiner Kultur, der Kultur der Provinz und den Gebäuden ab. Unter jedem Bauvorhaben steht sein <b>konkreter Nutzen</b>: Gold, Pferde und Forschung je Runde (abzüglich 0,2 Gold Verwaltung je Gebäudestufe), Ordnung, Bevölkerungsgrenze, Aushebungen, Belagerungsdauer und neue Truppen. Dazu steht dort, nach wie vielen Runden es fertig ist und sich bezahlt gemacht hat. Die Ordnung nähert sich ihrem neuen Zielwert um 30 % je Runde, und mehr Ordnung heißt mehr Steuern.</p>
+<h3>Provinzen</h3><p>Klicke eine Provinz an. Im Reiter <b>Bauen</b> errichtest du Märkte, Kanate, Moscheen, Madrasas, Mauern, Stallungen oder eine Ordu. Im Reiter <b>Rekrutieren</b> wirbst du Truppen an. Welche Truppen es gibt, hängt von deiner Kultur, der Kultur der Provinz und den Gebäuden ab. Unter jedem Bauvorhaben steht sein <b>konkreter Nutzen</b>: Gold, Pferde und Forschung je Runde (abzüglich 0,2 Gold Verwaltung je Gebäudestufe), Ordnung, Bevölkerungsgrenze, Aushebungen, Belagerungsdauer und neue Truppen. Dazu steht dort, nach wie vielen Runden es fertig ist und sich bezahlt gemacht hat. Die Ordnung nähert sich ihrem neuen Zielwert um 30 % je Runde, und mehr Ordnung heißt mehr Steuern. Mit <b>🤖 Automatisch ausbauen</b> baut eine Provinz, auf Wunsch auch alle, zu Beginn jeder Runde selbst Gebäude und Orte aus. Sie wählt dabei, was am meisten bringt, und rührt die eingestellte Goldreserve nicht an.</p>
 <h3>Nomaden und Sesshafte</h3><p><b>Nomadische Khanate</b> leben von Herden und Weiden: viele Pferde, schnelle Reiterheere, aber wenig Steuern aus Städten. <b>Sultanate</b> verbinden türkische Reiter mit persischer Verwaltung. <b>Sesshafte Reiche</b> erzielen die höchsten Steuern. Die Herrschaftsform wechselst du im Fraktionsfenster.</p>
 <h3>Heere</h3><p>Wähle ein Heer und klicke auf eine Provinz. Ein zweiter Klick oder ein Rechtsklick lässt es marschieren. In feindlichen Provinzen belagern Heere die Stadt, bis sie fällt. Du kannst stattdessen auch <b>stürmen</b> oder <b>plündern</b>. Ohne Belagerungsgerät sind starke Mauern kaum zu nehmen. Reine Reiterheere dürfen durch Feindgebiet ziehen. Alles zum Krieg steht in der <b>Kriegsübersicht</b> (⚔ oben): Kriegspunkte, Belagerungen, Feindheere, Friedensbereitschaft und eine Anleitung Schritt für Schritt.</p>
 <h3>Schlachten</h3><p>Vor jeder Schlacht wählst du eine Taktik. Die <b>vorgetäuschte Flucht</b> der Steppenreiter schlägt den Frontalangriff, verliert aber gegen eine feste Verteidigung. Die <b>Umzingelung</b> bricht Verteidigungsstellungen. Der <b>Pfeilhagel</b> zermürbt Stehende, versagt aber gegen entschlossene Angriffe. Den <b>Hinterhalt</b> gibt es nur in Wald, Hügeln und Gebirge. Achte auf Gelände und die Zusammensetzung beider Heere.</p>
@@ -766,6 +779,18 @@ const TR = {
 <tr><td>Yağma</td><td>her tur +2</td></tr></table>
 <p><b>Savaş yorgunluğu</b> her savaş turunda, her kaybedilen meydan savaşında ve her kaybedilen eyalette artar. Bütün ülkede asayişi düşürür. Barış onu azaltır.</p>
 <p><b>İsyancılar</b> her zaman düşmandır. Bir vasal ya da müttefik isyancılardan toprak geri alırsa onu sana iade eder.</p>`,
+  'log.autoBuild': 'Otomatik imar: {n} iş başladı – {items}.',
+  'auto.title': 'Otomatik imar',
+  'ui.on': 'Açık',
+  'ui.off': 'Kapalı',
+  'auto.towns': '🤖 Bu eyaletin yerleri otomatik geliştiriliyor.',
+  'auto.on': '🤖 Otomatik geliştir',
+  'auto.hint': 'Bu eyalet her turun başında binaları ve yerleri kendisi geliştirir. Altının yedeğin üzerinde kaldıkça en çok fayda sağlayanı seçer.',
+  'auto.reserve': 'Altın yedeği',
+  'auto.all': 'Tüm eyaletler otomatik',
+  'auto.none': 'Otomatiği her yerde kapat',
+  'auto.count': '{m} eyaletten {n} tanesi otomatik gelişiyor',
+  'auto.badge': '🤖 Oto',
   'bp.perTurn': 'her tur',
   'bp.order': 'Asayiş {n}',
   'bp.cap': 'Nüfus sınırı {n}',
@@ -1310,6 +1335,7 @@ const TR = {
   'ord.divided': 'Eyaletteki yabancı yerler',
   'op.contested': 'Tartışmalı eyaletler',
   'log.townTaken': '{fac}, {town} ({prov}) yerini {from} elinden aldı.',
+  'log.shelter': '{fac} ordusu {prov} surlarının ardına çekildi ve garnizonu güçlendiriyor.',
   'log.townFreed': '{fac}, {town} ({prov}) yerini isyancılardan kurtarıp {lord} devletine geri verdi.',
   'log.provFreed': '{fac}, {prov} eyaletini isyancılardan kurtarıp {lord} devletine geri verdi.',
   'log.fullControl': '{prov} artık tamamen bizim elimizde!',
@@ -1358,7 +1384,7 @@ const TR = {
 <h3>Bilinen Dünya</h3><p>Harita Atlas Okyanusu\'ndan Kore\'ye, İskandinavya\'dan Nijer\'e uzanır. Başlangıçta her devlet yalnızca kendi yurdunu ve sınır komşularını tanır; geri kalan her şey <b>Terra incognita</b> sisinin altındadır. Yabancı bölgeler (Frengistan, Uzak Doğu, Afrika ya da Şark) ortak sınırlar, fetih, savaş, onları tanıyan devletlerle ticaret ve ittifak, seyyahlar ve Haçlı Seferleri gibi olaylar ile araştırma sayesinde keşfedilir: <i>Batı\'ya Elçiler</i>, <i>İmparatorluk Sarayına Elçiler</i>, <i>Sahra Kervanları</i>, <i>Doğu\'ya Hacılar</i> ve <i>İdrisi\'nin Dünya Haritası</i>. Bilinmeyen topraklara girilemez; bazı icatlar (barut, pusula, baskı, üç tarla sistemi, uzun yay) kaynak ülkeyle temas gerektirir. Hangi bölgeleri tanıdığını devlet penceresi gösterir.</p>
 <h3>Şehirler, Kaleler ve Hâkimiyet</h3><p>Her eyalet <b>başkentinden</b> ve 2–4 başka yerden oluşur: şehirler, pazar kasabaları, limanlar, kaleler, madenler, manastır/ribatlar, kervansaraylar, yaylaklar ve ziyaretgâhlar. Her yerin kendi getirisi vardır ve geliştirilebilir (3 kademe). Başkenti fetheden eyaleti alır; ancak güçlü tahkimli yerler <b>yabancı toprak</b> olarak direnir ve tek tek kuşatılmalı veya hücumla alınmalıdır. Sursuz açık yerler her düşman ordusuna kendiliğinden düşer. Bir eyaletin <b>bütün</b> yerlerini elinde tutan +%8 gelir ve +4 asayiş kazanır; her yabancı yer %10 gelir ve 6 asayiş kaybettirir, ilişkileri bozar ve savaş sebebidir. Kaleler kendi ordularına ikmal sağlar, ek asker toplamaya izin verir ve kuşatılmış başkenti çıkış hücumlarıyla destekler. Yerler satın alınabilir, satılabilir veya hediye olarak devredilebilir; barışta galip kendi yabancı topraklarını korur ve kaybedenin kendi ülkesindeki yerlerini geri alır. Huzursuz eyaletlerde yerler asilere katılabilir. <i>Hâkimiyet</i> harita modu bölünmüş eyaletleri, <i>Şehirler</i> sekmesi bir eyaletin bütün yerlerini gösterir.</p>
 <h3>Turlar</h3><p>Bir tur bir mevsimdir. Kışın yerleşik orduların savaşı ve yürüyüşü zorlaşır; göçebeler pek etkilenmez. <b>Turu bitir</b> (Enter) ile diğer bütün devletler hamle yapar.</p>
-<h3>Eyaletler</h3><p>Bir eyalete tıkla. <b>İnşa</b> sekmesinde çarşı, kâriz, cami, medrese, sur, ahır ya da ordu kurarsın. <b>Asker</b> sekmesinde birlik toplarsın. Hangi birliklerin bulunduğu kültürüne, eyaletin kültürüne ve binalara bağlıdır. Her inşa seçeneğinin altında <b>somut faydası</b> yazar: her tur altın, at ve araştırma (her bina seviyesi için 0,2 altın idare gideri düşülmüş olarak), asayiş, nüfus sınırı, asker toplama, kuşatma süresi ve yeni birlikler. Binanın kaç turda biteceği ve kendini ne zaman ödeyeceği de orada gösterilir. Asayiş her tur yeni hedef değerine %30 yaklaşır; daha çok asayiş daha çok vergi demektir.</p>
+<h3>Eyaletler</h3><p>Bir eyalete tıkla. <b>İnşa</b> sekmesinde çarşı, kâriz, cami, medrese, sur, ahır ya da ordu kurarsın. <b>Asker</b> sekmesinde birlik toplarsın. Hangi birliklerin bulunduğu kültürüne, eyaletin kültürüne ve binalara bağlıdır. Her inşa seçeneğinin altında <b>somut faydası</b> yazar: her tur altın, at ve araştırma (her bina seviyesi için 0,2 altın idare gideri düşülmüş olarak), asayiş, nüfus sınırı, asker toplama, kuşatma süresi ve yeni birlikler. Binanın kaç turda biteceği ve kendini ne zaman ödeyeceği de orada gösterilir. Asayiş her tur yeni hedef değerine %30 yaklaşır; daha çok asayiş daha çok vergi demektir. <b>🤖 Otomatik geliştir</b> ile bir eyalet, istersen hepsi, her turun başında binaları ve yerleri kendisi geliştirir. En çok fayda sağlayanı seçer ve belirlenen altın yedeğine dokunmaz.</p>
 <h3>Göçebeler ve yerleşikler</h3><p><b>Göçebe hanlıklar</b> sürülerle ve otlaklarla yaşar: çok at, hızlı süvari orduları, ama şehirlerden az vergi. <b>Sultanlıklar</b> Türk süvarisini Fars bürokrasisiyle birleştirir. <b>Yerleşik devletler</b> en yüksek vergiyi toplar. Yönetim biçimini devlet penceresinden değiştirirsin.</p>
 <h3>Ordular</h3><p>Bir ordu seç ve bir eyalete tıkla. İkinci tık ya da sağ tık orduyu yürütür. Düşman eyaletlerinde ordular şehri düşene kadar kuşatır. Bunun yerine <b>hücum</b> da edebilir ya da <b>yağmalayabilirsin</b>. Kuşatma aleti olmadan güçlü surlar zor alınır. Yalnızca süvariden oluşan ordular düşman toprağından geçebilir. Savaşla ilgili her şey <b>savaş genel bakışında</b> (üstte ⚔) bulunur: savaş puanı, kuşatmalar, düşman orduları, barışa hazırlık ve adım adım rehber.</p>
 <h3>Savaşlar</h3><p>Her savaştan önce bir taktik seçersin. Bozkır süvarisinin <b>sahte ricatı</b> cephe taarruzunu yener, ama sağlam savunmaya yenilir. <b>Kuşatma manevrası</b> savunma düzenini kırar. <b>Ok yağmuru</b> duranları yıpratır, ama kararlı hücumlara karşı işe yaramaz. <b>Pusu</b> yalnızca ormanda, tepelerde ve dağlarda kurulabilir. Araziye ve iki ordunun bileşimine dikkat et.</p>

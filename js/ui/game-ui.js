@@ -21,6 +21,7 @@ import { DISEASES } from '../game/world-events.js';
 import { specialtiesOf } from '../data/specialties.js';
 import { FOCUS, setFocus, goodPrice, monopolies, RESOURCES } from '../game/market.js';
 import { saveAuto } from './saves.js';
+import { RESERVES, autoReserve, autoProvinces, setAuto } from '../game/autobuild.js';
 import { canSee, knownRegions } from '../game/discovery.js';
 import { townsOf, townWalls, townContribution, townName, controlOf, foreignTowns, canUpgrade, upgradeTown, townValue, hostileTowns, townGarrisonUnits, townDefenders, townSiegeNeeded } from '../game/towns.js';
 import { TOWN_TYPES, CONTROL } from '../data/towns.js';
@@ -455,13 +456,24 @@ export async function startOfTurn(startLog) {
 }
 
 // ---------- Panel ----------
+let panelKey = null;
 export function renderPanel() {
   const el = $('#panel');
   const m = UIState.map;
+  // Scrollposition behalten, solange dieselbe Provinz bzw. dasselbe Heer im selben Reiter angezeigt wird
+  const key = (m.sel.army && army(m.sel.army)) ? 'a:' + m.sel.army : m.sel.prov ? 'p:' + m.sel.prov + ':' + UIState.tab : null;
+  const body = el.querySelector('.panel-body');
+  const keep = key && key === panelKey ? [body?.scrollTop || 0, el.scrollTop] : null;
+  panelKey = key;
   if (m.sel.army && army(m.sel.army)) el.innerHTML = armyPanel(army(m.sel.army));
   else if (m.sel.prov) el.innerHTML = provincePanel(m.sel.prov);
   else { el.innerHTML = ''; el.classList.remove('open'); return; }
   el.classList.add('open');
+  if (keep) {
+    const nb = el.querySelector('.panel-body');
+    if (nb) nb.scrollTop = keep[0];
+    el.scrollTop = keep[1];
+  }
 }
 
 function provincePanel(pid) {
@@ -472,7 +484,7 @@ function provincePanel(pid) {
   let html = `<div class="panel-head" data-act="panelToggle" style="--fc:${f.color}">
     <button class="panel-x" data-act="close">×</button>
     <div class="ptitle">${esc(L(d.n))} <small>${esc(L(d.city))}${f.capital === pid ? ' 👑' : ''}${d.holy ? ' ✦' : ''}</small></div>
-    <div class="psub">${swatch(f.color)}<a data-act="dipWith" data-fac="${f.id}">${esc(L(f.n))}</a>${f.overlord ? ` <small>(${esc(t('dip.vassalOf', { fac: L(facName(f.overlord)) }))})</small>` : ''}</div>
+    <div class="psub">${swatch(f.color)}<a data-act="dipWith" data-fac="${f.id}">${esc(L(f.n))}</a>${f.overlord ? ` <small>(${esc(t('dip.vassalOf', { fac: L(facName(f.overlord)) }))})</small>` : ''}${mine && p.auto ? ` <span class="tag">${esc(t('auto.badge'))}</span>` : ''}</div>
   </div>`;
   if (tabs.length > 1) html += `<div class="tabs">${tabs.map((k) => `<button data-act="tab" data-tab="${k}" class="${k === tab ? 'on' : ''}">${esc(t('tab.' + k))}</button>`).join('')}</div>`;
   html += `<div class="panel-body">`;
@@ -545,6 +557,7 @@ function townsTab(pid) {
   const myArmies = armiesIn(pid).filter((a) => a.fac === me && a.units.length);
   let html = `<div class="note">${controlText(pid)}</div>`;
   html += `<div class="muted small">${esc(t('tw.hint'))}</div>`;
+  if (p.auto && p.owner === me) html += `<div class="note small">${esc(t('auto.towns'))}</div>`;
   // Hauptstadt
   html += `<div class="town cap"><span class="tico">👑</span><div class="tmain"><b>${esc(L(d.city))}</b> <small>${esc(t('tw.capital'))}</small>
     <div class="small">${swatch(fac(p.owner).color)}${esc(L(facName(p.owner)))} · ${'▮'.repeat(effectiveWalls(pid)) || '—'} · ${esc(t('prov.garrison'))} ${Math.round(p.garrison * 100)}%${p.siege ? ` · <span class="neg">⚔ ${p.siege.turns}/${p.siege.needed}</span>` : ''}</div></div></div>`;
@@ -667,9 +680,21 @@ function previewHtml(pid, o) {
   return `<div class="bprev"><small>${lines}</small><br><small class="muted">${esc(when + pay)}</small></div>`;
 }
 
+function autoBox(pid) {
+  const p = prov(pid), me = G.s.player;
+  const all = factionProvinces(me).length, n = autoProvinces(me).length;
+  const res = autoReserve(me);
+  return `<div class="autobox">
+    <div class="autorow"><button data-act="autoToggle" class="${p.auto ? 'on' : ''}">${esc(t('auto.on'))}: <b>${esc(t(p.auto ? 'ui.on' : 'ui.off'))}</b></button>
+    <label class="small">${esc(t('auto.reserve'))} <select data-change="autoReserve">${RESERVES.map((r) => `<option value="${r}" ${r === res ? 'selected' : ''}>💰 ${r}</option>`).join('')}${RESERVES.includes(res) ? '' : `<option selected value="${res}">💰 ${res}</option>`}</select></label></div>
+    <div class="muted small">${esc(t('auto.hint'))}</div>
+    <div class="small">${esc(t('auto.count', { n, m: all }))} · <a data-act="autoAll">${esc(t('auto.all'))}</a> · <a data-act="autoNone">${esc(t('auto.none'))}</a></div>
+  </div>`;
+}
+
 function buildTab(pid) {
   const p = prov(pid), f = fac(p.owner);
-  let html = '';
+  let html = autoBox(pid);
   if (p.queue) html += `<div class="note">🔨 ${esc(L(buildingName(p.queue.b, p.queue.l, f.religion)))} ${bar(1 - p.queue.turns / p.queue.total, '#6b5b1f')} ${esc(t('build.turnsLeft', { n: p.queue.turns }))}</div>`;
   html += `<div class="optlist">`;
   for (const o of buildOptions(pid)) {
@@ -865,6 +890,9 @@ const panelHandlers = {
     if (G.s.armies[a.id]) selectArmy(a.id); else clearSelection();
     refreshAll();
   },
+  autoToggle: () => { const pid = UIState.map.sel.prov; setAuto(pid, !prov(pid).auto); renderPanel(); UIState.map.invalidate(); },
+  autoAll: () => { fac(G.s.player).autoAll = true; for (const pid of factionProvinces(G.s.player)) setAuto(pid, true); toast(t('auto.count', { n: autoProvinces(G.s.player).length, m: factionProvinces(G.s.player).length })); renderPanel(); },
+  autoNone: () => { fac(G.s.player).autoAll = false; for (const pid of factionProvinces(G.s.player)) setAuto(pid, false); renderPanel(); },
   townUp: (el) => { const pid = UIState.map.sel.prov; if (upgradeTown(G.s.player, pid, +el.dataset.i)) { toast(t('tw.upgraded')); refreshAll(false); } },
   townSiege: (el) => {
     const pid = UIState.map.sel.prov;
@@ -929,6 +957,7 @@ document.addEventListener('change', (e) => {
   if (!el || !$('#panel').contains(el)) return;
   const a = army(UIState.map.sel.army);
   if (el.dataset.change === 'assignGen' && a && el.value) { assignGeneral(a, el.value); refreshAll(false); }
+  if (el.dataset.change === 'autoReserve') { fac(G.s.player).autoReserve = +el.value; renderPanel(); }
   if (el.dataset.change === 'splitSel') {
     const i = +el.dataset.i;
     if (el.checked) UIState.splitSel.add(i); else UIState.splitSel.delete(i);

@@ -13,6 +13,7 @@ import { SCENARIOS } from '../data/scenarios.js';
 import { FACTIONS, TITLES } from '../data/factions.js';
 import { initDiscovery, processDiscovery } from './discovery.js';
 import { initTowns, setTownOwner } from './towns.js';
+import { runAutoBuild } from './autobuild.js';
 
 export function newGame(scenarioId, playerFid, mapData, seed) {
   const s = createGame(scenarioId, playerFid, seed ?? Math.floor(Math.random() * 1e9), mapData);
@@ -70,6 +71,7 @@ export async function endTurn(progress) {
   const s = G.s;
   try {
     refreshCaches();
+    if (!s.observer && fac(s.player)?.alive) runAutoBuild(s.player);
     const order = aliveFactions().map((f) => f.id).filter((id) => s.observer || id !== s.player);
     // KI zieht in zufälliger Reihenfolge, Aufständische zuletzt
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rng().next() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }

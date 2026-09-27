@@ -9,6 +9,7 @@ import { clamp } from '../util.js';
 import { specialtyEff } from '../data/specialties.js';
 import { focusEff } from './market.js';
 import { townGarrisonUnits, townWalls, townName } from './towns.js';
+import { shelterArmy } from './military.js';
 
 export const TACTICS = {
   frontal: {
@@ -332,7 +333,9 @@ function retreatFrom(a, pid) {
     return !hostile && (o === a.fac || (hasAccess(a.fac, o) && !atWar(a.fac, o)));
   });
   if (!opts.length) {
-    // eingeschlossen: schwere Verluste
+    // Eingeschlossen im eigenen Land: Die Reste flüchten hinter die Mauern der Stadt
+    if (s.provinces[pid].owner === a.fac) { for (const u of a.units) u.hp *= 0.6; shelterArmy(a, pid); return; }
+    // eingeschlossen in der Fremde: schwere Verluste
     for (const u of a.units) u.hp *= 0.5;
     a.units = a.units.filter((u) => u.hp > 0.06);
     if (!a.units.length) removeArmy(a);

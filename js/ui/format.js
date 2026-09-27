@@ -16,6 +16,7 @@ export function formatLog(e) {
     case 'we.vein': p.goodName = L(GOODS[p.good].n); break;
     case 'log.discover': p.causeText = t(p.cause || 'disc.event', { via: p.via }); break;
     case 'log.battle': p.kind = t(p.assault ? 'log.assault' : 'log.fieldBattle'); break;
+    case 'log.autoBuild': p.items = (p.list || []).map((n, i) => `${L(n)} (${L(p.provs[i])})`).join(', ') + (p.more ? ` … +${p.more}` : ''); break;
     default: break;
   }
   return t(e.k, p);

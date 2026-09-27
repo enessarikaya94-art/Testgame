@@ -298,6 +298,8 @@ export function setOwner(pid, fid, conquest = false) {
   if (p.towns) transferTowns(pid, old, fid, conquest);
   p.lastOwner = old;
   p.owner = fid;
+  // Automatischer Ausbau: neue Provinzen übernehmen die Reichseinstellung
+  p.auto = G.s.factions[fid]?.autoAll ? true : undefined;
   p.queue = null;
   p.siege = null;
   p.conquered = 8;

@@ -162,14 +162,14 @@ export function canUpgrade(fid, pid, i) {
   return { ok: fac(fid).gold >= cost, cost };
 }
 
-export function upgradeTown(fid, pid, i) {
+export function upgradeTown(fid, pid, i, quiet = false) {
   const c = canUpgrade(fid, pid, i);
   if (!c.ok) return false;
   fac(fid).gold -= c.cost;
   const t = townsOf(pid)[i];
   t.lvl++;
   t.gar = Math.min(1, t.gar + 0.2);
-  if (fid === G.s.player) log('log.townUpgrade', { town: townName(pid, i), prov: provName(pid), lvl: t.lvl }, { f: fid });
+  if (fid === G.s.player && !quiet) log('log.townUpgrade', { town: townName(pid, i), prov: provName(pid), lvl: t.lvl }, { f: fid });
   return true;
 }
 
