@@ -14,7 +14,9 @@ import { BUILDINGS } from '../data/buildings.js';
 import { clamp } from '../util.js';
 import { knows, knownRegions } from './discovery.js';
 import { townsOf, townWalls, hostileTowns, townContribution, upgradeTown, canUpgrade, foreignHeld, contestedWith, townValue, townDefenders, townGarrisonUnits } from './towns.js';
-import { tradeTown, provinceBaseFor } from './diplomacy.js';
+import { tradeTown, provinceBaseFor, annexVassal, releaseVassal, vassalsOf } from './diplomacy.js';
+import { vassalCap, loyaltyOf, canAnnex } from './vassals.js';
+import { aiShips } from './naval.js';
 import { assaultTown, townDefensePower } from './military.js';
 
 export async function aiTurn(fid) {
@@ -151,8 +153,9 @@ function aiDiplomacy(f) {
     if (best && f.infamy > 45 && me !== 'mongol') best = null;
     if (best) {
       // Kleine Nachbarn lieber unterwerfen als vernichten
-      if (factionProvinces(best).length <= 2 && best !== s.player && proposalAcceptance('vassalize', me, best) > -25 && rng().chance(0.6)) makeVassal(best, me);
-      else if (rng().chance(0.1 + f.ai.aggr * 0.4)) declareWar(me, best);
+      if (factionProvinces(best).length <= 2 && best !== s.player && vassalsOf(me).length < vassalCap(me) && proposalAcceptance('vassalize', me, best) > 10 && rng().chance(0.35)) makeVassal(best, me);
+      // Kleinstaaten, die sich nicht unterwerfen lassen, sind meist nicht der Mühe wert
+      else if (rng().chance((0.1 + f.ai.aggr * 0.4) * (factionProvinces(best).length <= 2 && best !== s.player && !contestedWith(me, best) ? 0.18 : 1))) declareWar(me, best);
     }
   }
   // Handel & Bündnisse
@@ -190,7 +193,7 @@ function aiDiplomacy(f) {
     }
   }
   // Kleine Nachbarn unterwerfen
-  if (factionProvinces(me).length >= 8 && rng().chance(0.1)) {
+  if (!f.overlord && factionProvinces(me).length >= 8 && vassalsOf(me).length < vassalCap(me) && rng().chance(0.04)) {
     const small = nbs.filter((n) => factionProvinces(n).length <= 2 && !fac(n).overlord && n !== 'rebels')[0];
     if (small && small !== s.player && proposalAcceptance('vassalize', me, small) > 0) makeVassal(small, me);
   }
@@ -207,6 +210,18 @@ function aiDiplomacy(f) {
       } else if (proposalAcceptance('buyTown', me, owner, { pid, i, price }) > 0) tradeTown(pid, i, owner, me, price);
       break;
     }
+  }
+  // Lehnspolitik: Tributsatz nach Treue, treue Vasallen eingliedern, zu viele Vasallen entlassen
+  for (const v of vassalsOf(me)) {
+    const vf = fac(v), loy = loyaltyOf(v);
+    vf.vassalTax = loy < 40 ? 'low' : loy > 75 ? 'high' : 'normal';
+    const c = canAnnex(me, v);
+    if (c.ok && loyaltyOf(v) >= 75 && f.gold > c.cost + 400 && rng().chance(0.006)) { annexVassal(me, v); break; }
+  }
+  const vs = vassalsOf(me);
+  if (vs.length > vassalCap(me) + 1 && rng().chance(0.1)) {
+    const worst = vs.filter((v) => v !== s.player).sort((a, b) => loyaltyOf(a) - loyaltyOf(b))[0];
+    if (worst) releaseVassal(me, worst);
   }
   // Sultanstitel beim Kalifen erbitten
   if (!f.titles.includes('sultan') && titleClaimable(me, 'sultan').ok && rng().chance(0.15)) {
@@ -291,6 +306,7 @@ function aiBuild(f) {
     }
   }
   options.sort((a, b) => b.v - a.v);
+  aiShips(f);
   for (const o of options) {
     if (built >= maxBuild || o.cost > budget) continue;
     if (prov(o.pid).queue) continue;

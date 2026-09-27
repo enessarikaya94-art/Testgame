@@ -1,6 +1,6 @@
 // Diplomatie: Krieg, Frieden, Handel, Bündnisse, Vasallen, Titel.
 
-import { G, fac, rel, relPeek, atWar, opinion, log, facName, factionProvinces, factionArmies, aliveFactions, neighbors, prov, provName, setOwner, rng, chr } from './state.js';
+import { G, fac, rel, relPeek, atWar, opinion, log, facName, factionProvinces, factionArmies, aliveFactions, neighbors, prov, provName, setOwner, rng, chr, bumpAlive } from './state.js';
 import { armyPower } from './military.js';
 import { provinceIncome } from './economy.js';
 import { RELIGIONS } from '../data/world.js';
@@ -10,6 +10,7 @@ import { generals, loyalty, createChar, civilWar } from './characters.js';
 import { setPayment, resourceAccess } from './market.js';
 import { contactByWar } from './discovery.js';
 import { foreignHeld, setTownOwner, townValue, townsOf, townName } from './towns.js';
+import { initVassal, clearVassal, processVassals, registerPower, followsToWar, protectionAnswered, vassalCap, loyaltyOf, canAnnex, annexEffects } from './vassals.js';
 
 export const TRUCE_TURNS = 12;
 
@@ -68,21 +69,33 @@ export function declareWar(a, b, opts = {}) {
   const truce = truceLeft(a, b) > 0;
   const holy = fa.holyWar > 0 && RELIGIONS[fa.religion].group !== RELIGIONS[fb.religion].group;
   r.war = true; r.warStart = G.s.turn; r.score = {}; r.trade = false; r.alliance = false; r.mod -= 20;
-  if (fb.overlord === a) fb.overlord = null;
-  if (fa.overlord === b) { fa.overlord = null; }
+  if (fb.overlord === a) clearVassal(fb);
+  if (fa.overlord === b) { clearVassal(fa); opts.independence = true; }
   fa.infamy += holy ? 3 : fb.infamy > 50 ? 4 : 10;
   if (truce) { fa.infamy += 20; fa.prestige = Math.max(0, fa.prestige - 20); }
   log('log.war', { a: fa.n, b: fb.n }, { f: a, imp: a === G.s.player || b === G.s.player });
   contactByWar(a, b);
-  // Bündnispartner und Vasallen
+  // Bündnispartner und Vasallen des Angegriffenen
   for (const ally of [...alliesOf(b), ...vassalsOf(b)]) {
     if (ally === a || atWar(ally, a)) continue;
+    const isVassal = fac(ally).overlord === b;
+    if (isVassal && !followsToWar(ally)) continue; // untreue Vasallen bleiben zu Hause
     if (ally === G.s.player) { G.s.pending.push({ type: 'callToArms', from: b, enemy: a }); continue; }
-    if (vassalsOf(b).includes(ally) || opinion(ally, b) > 20 || rng().chance(0.6)) joinWar(ally, a, b);
+    if (isVassal || opinion(ally, b) > 20 || rng().chance(0.6)) joinWar(ally, a, b);
     else breakAlliance(ally, b, true);
   }
+  // Schutzpflicht: Der Lehnsherr des Angegriffenen muss ihm beistehen
+  const lord = fb.overlord;
+  if (lord && lord !== a && fac(lord)?.alive && !atWar(lord, a) && !opts.independence) {
+    if (lord === G.s.player) G.s.pending.push({ type: 'callToArms', from: b, enemy: a, protect: true });
+    else {
+      const helps = rng().chance(0.55 + Math.min(0.35, militaryPower(lord) / (militaryPower(a) + 1) * 0.15));
+      if (helps) joinWar(lord, a, b);
+      protectionAnswered(b, helps);
+    }
+  }
   if (!opts.noCall) {
-    for (const v of vassalsOf(a)) if (v !== b && !atWar(v, b) && v !== G.s.player) joinWar(v, b, a);
+    for (const v of vassalsOf(a)) if (v !== b && !atWar(v, b) && v !== G.s.player && followsToWar(v)) joinWar(v, b, a);
   }
   // Koalition gegen notorische Eroberer
   if (fa.infamy > 25 && a !== 'rebels') {
@@ -95,17 +108,19 @@ export function declareWar(a, b, opts = {}) {
   return true;
 }
 
-function joinWar(joiner, enemy, friend) {
+export function joinWar(joiner, enemy, friend) {
   const r = rel(joiner, enemy);
   r.war = true; r.warStart = G.s.turn; r.score = {}; r.trade = false; r.alliance = false;
-  if (fac(enemy).overlord === joiner) fac(enemy).overlord = null;
-  if (fac(joiner).overlord === enemy) fac(joiner).overlord = null;
+  if (fac(enemy).overlord === joiner) clearVassal(fac(enemy));
+  if (fac(joiner).overlord === enemy) clearVassal(fac(joiner));
   log('log.joinWar', { a: facName(joiner), b: facName(enemy), c: facName(friend) }, { f: joiner, imp: joiner === G.s.player || enemy === G.s.player });
 }
 
 export function acceptCallToArms(joiner, friend, enemy, accept) {
+  const protect = fac(friend)?.overlord === joiner;
   if (accept) joinWar(joiner, enemy, friend);
-  else { breakAlliance(joiner, friend, true); fac(joiner).prestige = Math.max(0, fac(joiner).prestige - 15); }
+  else if (!protect) { breakAlliance(joiner, friend, true); fac(joiner).prestige = Math.max(0, fac(joiner).prestige - 15); }
+  if (protect) protectionAnswered(friend, accept);
 }
 
 export function makePeace(a, b, terms = {}) {
@@ -134,7 +149,7 @@ export function makePeace(a, b, terms = {}) {
     const t = townsOf(pid)[i];
     if (t) setTownOwner(pid, i, t.owner === a ? b : a);
   }
-  if (terms.vassal) fac(terms.vassal).overlord = terms.vassal === a ? b : a;
+  if (terms.vassal) initVassal(terms.vassal, terms.vassal === a ? b : a);
   if (terms.pay) setPayment(terms.pay.from, terms.pay.from === a ? b : a, terms.pay.amount, terms.pay.turns);
   for (const f of [fa, fb]) f.warWeariness = Math.max(0, f.warWeariness - 10);
   // Heere in fremdem Gebiet kehren heim
@@ -215,10 +230,12 @@ export function proposalAcceptance(type, from, to, extra = {}) {
     }
     case 'nap': return op + 10 + (ratio > 1.2 ? 15 : 0);
     case 'vassalize': {
-      // "to" soll Vasall von "from" werden
-      if (ft.overlord) return -999;
+      // "to" soll Vasall von "from" werden: Nur wer übermächtig und nah ist, zwingt andere unter sein Joch
+      if (ft.overlord || fac(from).overlord) return -999;
       const n = factionProvinces(to).length;
-      return (ratio - 3) * 20 + op * 0.5 - n * 3 - (fac(to).prestige / 10) + (neighborsOf(to).includes(from) ? 10 : -30);
+      const sameRel = RELIGIONS[fac(from).religion].group === RELIGIONS[ft.religion].group;
+      const full = vassalsOf(from).length >= vassalCap(from) ? 20 : 0;
+      return (Math.min(ratio, 8) - 3.5) * 14 + op * 0.4 - n * 6 - (ft.prestige / 8) + (neighborsOf(to).includes(from) ? 5 : -40) - (sameRel ? 0 : 20) - full - vassalsOf(to).length * 15;
     }
     case 'marriage': return op + 10 - (atWar(from, to) ? 999 : 0);
     case 'buyTown': {
@@ -270,15 +287,35 @@ export function setNap(a, b) {
   r.nap = G.s.turn + 20; r.truce = Math.max(r.truce || 0, G.s.turn + 20); r.mod += 5;
 }
 export function makeVassal(vassal, overlord) {
-  fac(vassal).overlord = overlord;
+  initVassal(vassal, overlord);
   const r = rel(vassal, overlord);
   r.war = false; r.mod += 10; r.truce = G.s.turn + TRUCE_TURNS;
+  // Unterwerfung beunruhigt die Nachbarn
+  fac(overlord).infamy += 4 + factionProvinces(vassal).length * 2;
   log('log.vassal', { a: facName(vassal), b: facName(overlord) }, { f: overlord, imp: vassal === G.s.player || overlord === G.s.player });
 }
 export function releaseVassal(overlord, vassal) {
   if (fac(vassal).overlord !== overlord) return;
-  fac(vassal).overlord = null;
+  clearVassal(fac(vassal));
   rel(overlord, vassal).mod += 30;
+  fac(overlord).infamy = Math.max(0, fac(overlord).infamy - 3);
+}
+
+// Einen treuen Vasallen friedlich ins Reich eingliedern
+export function annexVassal(overlord, vassal) {
+  const c = canAnnex(overlord, vassal);
+  if (!c.ok) return false;
+  annexEffects(overlord, vassal);
+  const s = G.s, v = fac(vassal);
+  for (const a of Object.values(s.armies)) if (a.fac === vassal) { a.fac = overlord; a.gen = null; }
+  for (const pid of factionProvinces(vassal)) setOwner(pid, overlord);
+  for (const [pid, i] of [...foreignHeld(vassal)]) setTownOwner(pid, i, overlord);
+  for (const c2 of Object.values(s.chars)) if (c2.fac === vassal && c2.alive) { c2.alive = false; c2.died = s.year; }
+  clearVassal(v);
+  v.alive = false;
+  bumpAlive();
+  log('log.annexed', { a: v.n, b: fac(overlord).n }, { f: overlord, imp: overlord === s.player || vassal === s.player });
+  return true;
 }
 export function giftGold(from, to, amount) {
   const f = fac(from);
@@ -338,19 +375,8 @@ export function processDiplomacy() {
       if (s.factions[b]?.alive) s.factions[b].warWeariness += 0.4;
     }
   }
-  // Vasallen, die stärker werden als ihr Lehnsherr, sagen sich los
-  for (const f of aliveFactions()) {
-    if (!f.overlord) continue;
-    const o = fac(f.overlord);
-    if (!o || !o.alive) { f.overlord = null; continue; }
-    if (f.id === s.player) continue;
-    const ratio = militaryPower(f.id) / (militaryPower(o.id) + 1);
-    if (ratio > 1.1 && opinion(f.id, o.id) < 20 && rng().chance(0.05)) {
-      f.overlord = null;
-      log('log.vassalFree', { a: f.n, b: o.n }, { f: f.id, imp: o.id === s.player });
-      if (rng().chance(0.5) && o.id !== s.player) declareWar(o.id, f.id);
-    }
-  }
+  // Treue der Vasallen, Abfall und Aufstände
+  processVassals(declareWar, joinWar);
 }
 
 // ---------- Titel ----------
@@ -415,3 +441,5 @@ export function strongestEnemy(fid) {
 }
 
 export function rulerName(fid) { return chr(fac(fid).ruler)?.n; }
+
+registerPower(militaryPower);

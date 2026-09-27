@@ -14,6 +14,7 @@ import { FACTIONS, TITLES } from '../data/factions.js';
 import { initDiscovery, processDiscovery } from './discovery.js';
 import { initTowns, setTownOwner } from './towns.js';
 import { runAutoBuild } from './autobuild.js';
+import { processFleets } from './naval.js';
 
 export function newGame(scenarioId, playerFid, mapData, seed) {
   const s = createGame(scenarioId, playerFid, seed ?? Math.floor(Math.random() * 1e9), mapData);
@@ -85,6 +86,7 @@ export async function endTurn(progress) {
       clearModCache();
     }
     // Rundenende für alle
+    processFleets();
     beginSieges();
     await progressSieges();
     processRaids();

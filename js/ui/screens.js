@@ -24,7 +24,8 @@ import { SLOTS, saveSlot, slotMeta, exportSave, importSave, loadSlotData } from 
 import { knowsFaction, knows, knownRegions, regionOf } from '../game/discovery.js';
 import { REGIONS, REGION_IDS } from '../data/regions.js';
 import { townsOf, townName, foreignHeld } from '../game/towns.js';
-import { tradeTown } from '../game/diplomacy.js';
+import { tradeTown, annexVassal } from '../game/diplomacy.js';
+import { vassalCap, loyaltyOf, loyaltyParts, canAnnex, annexCost, TRIBUTE_RATES } from '../game/vassals.js';
 
 // ---------- Allgemein ----------
 export function confirmDialog(text, yes, no) {
@@ -147,7 +148,7 @@ export async function pendingDialog(item) {
     return;
   }
   if (item.type === 'callToArms') {
-    const ok = await confirmDialog(t('cta.text', { ally: L(facName(item.from)), enemy: L(facName(item.enemy)) }), t('cta.join'), t('cta.refuse'));
+    const ok = await confirmDialog(t(item.protect ? 'cta.protect' : 'cta.text', { ally: L(facName(item.from)), enemy: L(facName(item.enemy)) }), t('cta.join'), t('cta.refuse'));
     acceptCallToArms(s.player, item.from, item.enemy, ok);
     return;
   }
@@ -269,6 +270,7 @@ export function factionScreen() {
           <tr><th>${esc(t('fac.infamy'))}</th><td>${bar(Math.min(1, f.infamy / 100), '#8b1a1a')} ${Math.round(f.infamy)}</td></tr>
           <tr><th>${esc(t('fac.weariness'))}</th><td>${bar(Math.min(1, f.warWeariness / 60), '#5d6d7e')} ${Math.round(f.warWeariness)}</td></tr>
           ${f.overlord ? `<tr><th>${esc(t('fac.overlord'))}</th><td>${esc(L(facName(f.overlord)))}</td></tr>` : ''}
+          <tr><th>${esc(t('vas.list'))}</th><td>${vassalsOf(f.id).length} / ${vassalCap(f.id)}${vassalsOf(f.id).map((v) => { const l = Math.round(loyaltyOf(v)); return `<br><a data-act="dipTo" data-f="${v}">${esc(L(facName(v)))}</a> <small class="${l >= 60 ? 'pos' : l < 35 ? 'neg' : ''}">${esc(t('vas.loyalty'))} ${l}</small>`; }).join('')}<div class="muted small">${esc(t('vas.capHint'))}</div></td></tr>
         </table>
         <h3>${esc(t('fac.income'))}</h3>
         <table class="kv small">
@@ -318,6 +320,7 @@ export function factionScreen() {
     handlers: (close, wrap) => {
       const rerender = () => { wrap.querySelector('.modal-body').innerHTML = render(); refreshAll(false); };
       return {
+        dipTo: (el) => { close(); diplomacyScreen(el.dataset.f); },
         pol: (el) => {
           const f = fac(G.s.player);
           if (el.dataset.k === 'iqta') f.policies.iqta = el.dataset.v === '1';
@@ -372,6 +375,23 @@ export function logVisible(e) {
 }
 
 // Umstrittene Orte zwischen zwei Mächten
+// Lehen: Treue, Tributsatz und Lehnsgrenze
+function vassalRows(me, other) {
+  const f = fac(other);
+  const rows = [];
+  if (f.overlord === me) {
+    const loy = Math.round(loyaltyOf(other));
+    const cls = loy >= 60 ? 'pos' : loy < 35 ? 'neg' : '';
+    const state = loy < 20 ? t('vas.stateRevolt') : loy < 35 ? t('vas.stateDisloyal') : loy >= 65 ? t('vas.stateLoyal') : t('vas.stateUneasy');
+    rows.push(`<tr><th>${esc(t('vas.loyalty'))}</th><td><b class="${cls}">${loy}</b> – ${esc(state)}<div class="opparts">${loyaltyParts(other).map(([k, v]) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${esc(t(k))} ${signed(v)}</span>`).join('')}</div></td></tr>`);
+    const cur = f.vassalTax || 'normal';
+    rows.push(`<tr><th>${esc(t('vas.tax'))}</th><td><div class="policy">${Object.keys(TRIBUTE_RATES).map((k) => `<button data-act="vtax" data-v="${k}" class="${cur === k ? 'on' : ''}">${esc(t('vas.tax.' + k))} ${Math.round(TRIBUTE_RATES[k] * 100)} %</button>`).join('')}</div><small class="muted">${esc(t('vas.taxHint'))}</small></td></tr>`);
+    rows.push(`<tr><th>${esc(t('vas.cap'))}</th><td>${vassalsOf(me).length} / ${vassalCap(me)}</td></tr>`);
+  }
+  if (fac(me).overlord === other) rows.push(`<tr><th>${esc(t('vas.cap'))}</th><td>${esc(t('vas.weAreVassal', { n: Math.round((TRIBUTE_RATES[fac(me).vassalTax || 'normal']) * 100) }))}</td></tr>`);
+  return rows.join('');
+}
+
 function contestedRow(me, other) {
   const list = [];
   for (const [pid, i] of foreignHeld(other)) if (prov(pid).owner === me) list.push(`<a data-act="gotoTown" data-p="${pid}" data-i="${i}">🏰 ${esc(L(townName(pid, i)))}</a> <small class="neg">(${esc(L(provName(pid)))})</small>`);
@@ -423,7 +443,7 @@ export function diplomacyScreen(initial) {
         else acts.push(act('unally', '✖ ' + t('dip.breakAlliance'), ''));
         if (!(r?.nap > s.turn)) acts.push(act('nap', '📜 ' + t('dip.proposeNap'), chance(proposalAcceptance('nap', me, selected))));
         if (!(r?.married && s.turn - r.married < 20)) acts.push(act('marriage', '💍 ' + t('dip.marriage'), chance(proposalAcceptance('marriage', me, selected))));
-        if (f.overlord !== me && !f.overlord) acts.push(act('vassalize', '👑 ' + t('dip.demandVassal'), chance(proposalAcceptance('vassalize', me, selected))));
+        if (f.overlord !== me && !f.overlord) acts.push(act('vassalize', '👑 ' + t('dip.demandVassal'), chance(proposalAcceptance('vassalize', me, selected)) + (vassalsOf(me).length >= vassalCap(me) ? ` <span class="neg">${esc(t('vas.capWarn', { n: vassalsOf(me).length, m: vassalCap(me) }))}</span>` : '')));
         if (f.overlord !== me && !(r?.tributeTurn && s.turn - r.tributeTurn < 8)) acts.push(act('tribute', '💰 ' + t('dip.demandTribute', { n: tributeAmount(me, selected) }), chance(proposalAcceptance('tribute', me, selected))));
         if (!r?.access && !r?.alliance) acts.push(act('access', '🚩 ' + t('dip.proposeAccess'), chance(proposalAcceptance('access', me, selected))));
         else if (r?.access) acts.push(act('unaccess', '✖ ' + t('dip.cancelAccess'), ''));
@@ -433,7 +453,11 @@ export function diplomacyScreen(initial) {
           if (f.overlord !== me) acts.push(act('tributeTreaty', '📜💰 ' + t('dip.demandTributeTreaty', { n: treatyAmount(me, selected) }), chance(proposalAcceptance('tributeTreaty', me, selected))));
           acts.push(`<div class="giftrow">🤲 ${esc(t('dip.subsidy'))}: ${[5, 10, 20].map((n) => `<button data-act="subsidy" data-n="${n}">${n}/${esc(t('dip.perTurn'))}</button>`).join('')}</div>`);
         }
-        if (f.overlord === me) acts.push(act('release', '🕊 ' + t('dip.releaseVassal'), ''));
+        if (f.overlord === me) {
+          const ca = canAnnex(me, selected);
+          acts.push(act('annex', '🏛 ' + t('vas.annex', { n: annexCost(me, selected) }), ca.ok ? `<span class="pos">${esc(t('vas.annexOk'))}</span>` : `<span class="neg">${esc(t(ca.reason, { n: ca.n, cost: ca.cost }))}</span>`));
+          acts.push(act('release', '🕊 ' + t('dip.releaseVassal'), ''));
+        }
         if (fac(me).overlord === selected) acts.push(act('independence', '⚔ ' + t('dip.independence'), ''));
       }
       acts.push(`<div class="giftrow">🎁 ${esc(t('dip.gift'))}: ${[50, 100, 250].map((n) => `<button data-act="gift" data-n="${n}" ${fac(me).gold < n ? 'disabled' : ''}>${n}</button>`).join('')}</div>`);
@@ -448,6 +472,7 @@ export function diplomacyScreen(initial) {
           <tr><th>${esc(t('dip.opinion'))}</th><td><b>${signed(opinion(me, selected))}</b><div class="opparts">${opinionParts(me, selected).map(([k, v]) => `<span class="${v >= 0 ? 'pos' : 'neg'}">${esc(t(k))} ${signed(v)}</span>`).join('')}</div></td></tr>
           <tr><th>${esc(t('dip.resources'))}</th><td>${resList(selected)}</td></tr>
           ${contestedRow(me, selected)}
+          ${vassalRows(me, selected)}
           ${war ? `<tr><th>${esc(t('dip.warscore'))}</th><td>${signed(warScore(me, selected))}</td></tr>` : ''}
           <tr><th>${esc(t('fac.infamy'))}</th><td>${Math.round(f.infamy)}</td></tr>
           ${f.titles.length ? `<tr><th>${esc(t('fac.titles'))}</th><td>${f.titles.map((x) => esc(L(TITLES[x].n))).join(', ')}</td></tr>` : ''}
@@ -491,6 +516,12 @@ export function diplomacyScreen(initial) {
           rerender();
         },
         release: () => { releaseVassal(me(), selected); rerender(); },
+        annex: async () => {
+          const ok = await confirmDialog(t('vas.annexConfirm', { fac: L(facName(selected)), n: annexCost(me(), selected) }), t('vas.annexDo'), t('ui.cancel'));
+          if (ok && annexVassal(me(), selected)) { toast(t('vas.annexed')); refreshAll(); selected = null; }
+          rerender();
+        },
+        vtax: (el) => { fac(selected).vassalTax = el.dataset.v; rerender(); },
         independence: async () => {
           const ok = await confirmDialog(t('dip.independenceConfirm'), t('dip.independence'), t('ui.cancel'));
           if (ok) { fac(me()).overlord = null; declareWar(me(), selected); rerender(); }

@@ -3,6 +3,7 @@
 import { G, fac, prov, pdef, army, chr, neighbors, atWar, hasAccess, armiesIn, factionProvinces, log, provName, cityName, setOwner, rel, rng, wallBonus, facName, bumpAlive, allied } from './state.js';
 import { TERRAINS, GOVERNMENTS, CULTURES } from '../data/world.js';
 import { UNITS, UNIT_CLASSES, CULTURE_ARMY } from '../data/units.js';
+import { dissolveFleets } from './naval.js';
 import { resolveBattle, garrisonUnits } from './battle.js';
 import { getMods, provinceIncome, createArmy } from './economy.js';
 import { stat, killChar } from './characters.js';
@@ -448,6 +449,7 @@ export function checkFactionDeath(fid, killer) {
   f.alive = false;
   bumpAlive();
   dissolveTowns(fid);
+  dissolveFleets(fid);
   for (const a of armies) delete s.armies[a.id];
   for (const c of Object.values(s.chars)) if (c.fac === fid) c.alive = false;
   for (const v of Object.values(s.factions)) if (v.overlord === fid) v.overlord = null;

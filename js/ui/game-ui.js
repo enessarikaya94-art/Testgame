@@ -22,6 +22,7 @@ import { specialtiesOf } from '../data/specialties.js';
 import { FOCUS, setFocus, goodPrice, monopolies, RESOURCES } from '../game/market.js';
 import { saveAuto } from './saves.js';
 import { RESERVES, autoReserve, autoProvinces, setAuto } from '../game/autobuild.js';
+import { SHIPS, fleets as allFleets, fleet as fleetById, fleetsIn, fleetPos, capacity, cargoUnits, shipOptions, buildShip, canEmbark, embark, disembark, setSail, cancelSail, seaRoute, sailTurns, isPort, speedOf } from '../game/naval.js';
 import { canSee, knownRegions } from '../game/discovery.js';
 import { townsOf, townWalls, townContribution, townName, controlOf, foreignTowns, canUpgrade, upgradeTown, townValue, hostileTowns, townGarrisonUnits, townDefenders, townSiegeNeeded } from '../game/towns.js';
 import { TOWN_TYPES, CONTROL } from '../data/towns.js';
@@ -64,6 +65,18 @@ function makeGameAccess() {
       }));
     },
     selTown: () => UIState.selTown,
+    fleets: () => allFleets().map((fl) => {
+      const [x, y] = fleetPos(fl);
+      const own = fl.fac === G.s.player;
+      const seen = G.s.observer || (fl.route ? canSee(G.s.player, fl.route.to) || canSee(G.s.player, fl.route.from) : canSee(G.s.player, fl.prov));
+      let rest = null;
+      if (fl.route) {
+        // restliche Wegstrecke ab der aktuellen Position
+        const frac = fl.route.done / fl.route.len;
+        rest = fl.route.pts.slice(Math.floor(frac * (fl.route.pts.length - 1)) + 1);
+      }
+      return { id: fl.id, fac: fl.fac, prov: fl.prov, x, y, own, seen, atSea: !!fl.route, label: `${fl.ships.length}${fl.cargo.length ? '⚑' : ''}`, routePts: fl.route?.pts || null, routeRest: rest || [] };
+    }),
     knownRegions: () => (G.s.observer ? knownRegions(null) : knownRegions(G.s.player)),
   };
 }
@@ -130,7 +143,7 @@ function provColor(pid, mode) {
 export function attachMap(map) {
   UIState.map = map;
   map.game = makeGameAccess();
-  map.sel = { prov: null, army: null };
+  map.sel = { prov: null, army: null, fleet: null };
   map.preview = null;
   map.on('click', onMapClick);
   map.on('rightclick', onMapRightClick);
@@ -292,7 +305,7 @@ function onHover(pid, cx, cy, hoverArmy, hoverTown) {
 // ---------- Auswahl & Bewegung ----------
 export function clearSelection() {
   const m = UIState.map;
-  m.sel = { prov: null, army: null };
+  m.sel = { prov: null, army: null, fleet: null };
   m.preview = null;
   UIState.splitSel.clear();
   renderPanel();
@@ -301,7 +314,7 @@ export function clearSelection() {
 
 export function selectProvince(pid) {
   const m = UIState.map;
-  m.sel = { prov: pid, army: null };
+  m.sel = { prov: pid, army: null, fleet: null };
   m.preview = null;
   if (!['info', 'towns'].includes(UIState.tab) && prov(pid).owner !== G.s.player) UIState.tab = 'info';
   renderPanel();
@@ -312,16 +325,55 @@ export function selectArmy(aid) {
   const m = UIState.map;
   const a = army(aid);
   if (!a) return;
-  m.sel = { prov: a.prov, army: aid };
+  m.sel = { prov: a.prov, army: aid, fleet: null };
   m.preview = null;
   UIState.splitSel.clear();
   renderPanel();
   m.invalidate();
 }
 
+export function selectFleet(fid) {
+  const m = UIState.map;
+  const fl = fleetById(fid);
+  if (!fl) return;
+  m.sel = { prov: fl.route ? null : fl.prov, army: null, fleet: fid };
+  m.preview = null;
+  renderPanel();
+  m.invalidate();
+}
+
+function previewSail(fl, to) {
+  const m = UIState.map;
+  const r = seaRoute(fl.prov, to);
+  m.preview = { fleet: fl.id, target: to, pts: r?.pts || null, turns: r ? Math.max(1, Math.ceil(r.len / speedOf(fl))) : 0, ok: !!r };
+  if (!r) toast(t('sh.noRoute'));
+  renderPanel();
+  m.invalidate();
+}
+
+function sail(fl, to) {
+  if (setSail(fl, to)) toast(t('sh.sailing', { prov: L(provName(to)), n: sailTurns({ ...fl, route: null }, to) || '?' }));
+  UIState.map.preview = null;
+  renderPanel();
+  UIState.map.invalidate();
+}
+
 function onMapClick(hit) {
   if (isBusy()) return;
   const m = UIState.map;
+  // Flotten
+  const selF = m.sel.fleet && fleetById(m.sel.fleet);
+  if (hit.fleet && hit.fleet.id !== selF?.id) { selectFleet(hit.fleet.id); return; }
+  if (selF && selF.fac === G.s.player && !selF.route) {
+    const tgt = hit.fogProv;
+    if (tgt && isPort(tgt) && tgt !== selF.prov) {
+      const pv = m.preview && m.preview.fleet === selF.id ? m.preview : null;
+      if (pv && pv.ok && pv.target === tgt) { sail(selF, tgt); return; }
+      previewSail(selF, tgt);
+      return;
+    }
+    if (hit.fleet?.id === selF.id) return;
+  }
   const selA = m.sel.army && army(m.sel.army);
   const own = selA && selA.fac === G.s.player;
   if (hit.army && hit.army.fac === G.s.player) {
@@ -461,11 +513,12 @@ export function renderPanel() {
   const el = $('#panel');
   const m = UIState.map;
   // Scrollposition behalten, solange dieselbe Provinz bzw. dasselbe Heer im selben Reiter angezeigt wird
-  const key = (m.sel.army && army(m.sel.army)) ? 'a:' + m.sel.army : m.sel.prov ? 'p:' + m.sel.prov + ':' + UIState.tab : null;
+  const key = (m.sel.fleet && fleetById(m.sel.fleet)) ? 'f:' + m.sel.fleet : (m.sel.army && army(m.sel.army)) ? 'a:' + m.sel.army : m.sel.prov ? 'p:' + m.sel.prov + ':' + UIState.tab : null;
   const body = el.querySelector('.panel-body');
   const keep = key && key === panelKey ? [body?.scrollTop || 0, el.scrollTop] : null;
   panelKey = key;
-  if (m.sel.army && army(m.sel.army)) el.innerHTML = armyPanel(army(m.sel.army));
+  if (m.sel.fleet && fleetById(m.sel.fleet)) el.innerHTML = fleetPanel(fleetById(m.sel.fleet));
+  else if (m.sel.army && army(m.sel.army)) el.innerHTML = armyPanel(army(m.sel.army));
   else if (m.sel.prov) el.innerHTML = provincePanel(m.sel.prov);
   else { el.innerHTML = ''; el.classList.remove('open'); return; }
   el.classList.add('open');
@@ -504,7 +557,10 @@ function provinceInfo(pid) {
   const rels = Object.entries(p.rel).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const routes = (ROUTES_BY_PROV[pid] || []).map((rid) => L(TRADE_ROUTES.find((r) => r.id === rid).n));
   const armies = armiesIn(pid).filter((a) => a.units.length);
-  let html = `<table class="kv">
+  let pre = '';
+  if (s.blockade?.[pid]) pre += `<div class="note neg">⛵ ${esc(t('sh.blockade', { fac: L(facName(s.blockade[pid])) }))}</div>`;
+  if (d.port && p.owner === s.player && !(p.buildings.port)) pre += `<div class="muted small">⚓ ${esc(t('sh.portHint'))}</div>`;
+  let html = pre + `<table class="kv">
     <tr><th>${esc(t('prov.pop'))}</th><td>${fmt(p.pop)}k <small>/ ${fmt(p.basePop * 1.2)}k</small></td></tr>
     <tr><th>${esc(t('prov.order'))}</th><td title="${esc(obTitle)}">${bar(p.order / 100, p.order < 30 ? '#b03a2e' : p.order < 55 ? '#c9a227' : '#3c8c3c')} ${Math.round(p.order)} <small class="muted">(→ ${Math.round(ob.total)}) ⓘ</small></td></tr>
     <tr><th>${esc(t('prov.terrain'))}</th><td>${esc(L(TERRAINS[d.terrain].n))}</td></tr>
@@ -713,6 +769,73 @@ function buildTab(pid) {
   return html;
 }
 
+function fleetPanel(fl) {
+  const s = G.s, f = fac(fl.fac);
+  const mine = fl.fac === s.player;
+  const m = UIState.map;
+  const where = fl.route
+    ? t('sh.atSea', { prov: L(provName(fl.route.to)), n: Math.max(1, Math.ceil((fl.route.len - fl.route.done) / speedOf(fl))) })
+    : t('sh.inPort', { prov: L(provName(fl.prov)) });
+  let html = `<div class="panel-head" data-act="panelToggle" style="--fc:${f.color}">
+    <button class="panel-x" data-act="close">×</button>
+    <div class="ptitle">⛵ ${esc(t('sh.fleet'))} <small>${fl.ships.length} ${esc(t('sh.ships'))}</small></div>
+    <div class="psub">${swatch(f.color)}${esc(L(f.n))} · ${esc(where)}</div>
+  </div><div class="panel-body">`;
+  const counts = {};
+  for (const sh of fl.ships) counts[sh.t] = (counts[sh.t] || 0) + 1;
+  const hp = fl.ships.reduce((n, x) => n + x.hp, 0) / Math.max(1, fl.ships.length);
+  html += `<table class="kv"><tr><th>${esc(t('sh.ships'))}</th><td>${Object.entries(counts).map(([k, n]) => `${SHIPS[k].icon} ${n}× ${esc(L(SHIPS[k].n))}`).join('<br>')}</td></tr>
+    <tr><th>${esc(t('sh.state'))}</th><td>${bar(hp, hp < 0.5 ? '#b03a2e' : '#2e5e9e')} ${Math.round(hp * 100)} %</td></tr>
+    <tr><th>${esc(t('sh.hold'))}</th><td>${cargoUnits(fl)} / ${Math.floor(capacity(fl))} ${esc(t('army.units'))}</td></tr></table>`;
+  // Ladung
+  html += `<h4>${esc(t('sh.cargo'))}</h4>`;
+  if (!fl.cargo.length) html += `<div class="muted small">${esc(t('sh.empty'))}</div>`;
+  fl.cargo.forEach((a, i) => {
+    html += `<div class="opt"><div class="opt-main"><span class="ico">⚑</span><div><b>${esc(armyTitle(a))}</b><br><small class="muted">${fmt(armyMen(a))} · ${a.units.length} ${esc(t('army.units'))}</small></div></div>
+      ${mine && !fl.route ? `<div class="opt-side"><button data-act="unload" data-i="${i}">${esc(t('sh.unload'))}</button></div>` : ''}</div>`;
+  });
+  if (mine && !fl.route) {
+    const o = prov(fl.prov).owner;
+    if (fl.cargo.length > 1) html += `<div class="actions"><button data-act="unload" data-i="all">⚓ ${esc(t('sh.unloadAll'))}</button></div>`;
+    if (fl.cargo.length && o !== fl.fac && atWar(fl.fac, o)) html += `<div class="note neg small">${esc(t('sh.hostileLanding'))}</div>`;
+    // Heere im Hafen einschiffen
+    const here = factionArmies(s.player).filter((a) => a.prov === fl.prov && a.units.length);
+    if (here.length) {
+      html += `<h4>${esc(t('sh.embark'))}</h4>`;
+      for (const a of here) html += `<div class="opt ${canEmbark(fl, a) ? '' : 'dis'}"><div class="opt-main"><span class="ico">⚑</span><div><b>${esc(armyTitle(a))}</b><br><small class="muted">${a.units.length} ${esc(t('army.units'))}</small></div></div>
+        <div class="opt-side">${canEmbark(fl, a) ? `<button data-act="board" data-id="${a.id}" data-fl="${fl.id}">${esc(t('sh.board'))}</button>` : `<small class="neg">${esc(t('sh.noRoom'))}</small>`}</div></div>`;
+    }
+  }
+  // Segelbefehl
+  if (mine) {
+    const pv = m.preview && m.preview.fleet === fl.id ? m.preview : null;
+    if (fl.route) {
+      html += `<div class="movebox">⛵ ➜ <b>${esc(L(provName(fl.route.to)))}</b>${fl.route.done === 0 ? ` <button data-act="unsail">${esc(t('move.stop'))}</button>` : ''}</div>`;
+    } else if (pv && pv.ok) {
+      html += `<div class="movebox"><div>⛵ ➜ <b>${esc(L(provName(pv.target)))}</b> – ${esc(t('move.turns', { n: pv.turns }))}</div>
+        ${canSee(s.player, pv.target) ? '' : `<div class="small">🌫 ${esc(t('sh.unknownCoast'))}</div>`}
+        <button class="primary" data-act="sail">${esc(t('sh.sail'))}</button> <button data-act="cancelPreview">${esc(t('ui.cancel'))}</button></div>`;
+    } else {
+      html += `<div class="muted small hint">${esc(t('sh.hint'))}</div>`;
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+function shipsSection(pid) {
+  const opts = shipOptions(G.s.player, pid);
+  if (!opts.length) return '';
+  let html = `<h4>⚓ ${esc(t('sh.build'))}</h4><div class="muted small">${esc(t('sh.buildHint'))}</div><div class="optlist">`;
+  for (const o of opts) {
+    const sd = SHIPS[o.id];
+    const reason = o.reason === 'sh.needPort' ? t('sh.needPort', { n: o.lvl }) : o.reason ? t(o.reason) : '';
+    html += `<div class="opt ${o.ok ? '' : 'dis'}"><div class="opt-main"><span class="ico">${sd.icon}</span><div><b>${esc(L(sd.n))}</b><br><small class="muted">${esc(L(sd.desc))}</small></div></div>
+      <div class="opt-side"><small>💰${o.cost} · ${esc(t('rec.upkeep'))} ${sd.upkeep}</small>${o.ok ? `<button data-act="buildShip" data-s="${o.id}">${esc(t('sh.buildDo'))}</button>` : `<small class="neg">${esc(reason)}</small>`}</div></div>`;
+  }
+  return html + `</div>`;
+}
+
 function unitStats(u) {
   return `<small class="stats" title="${esc(t('unit.statsTitle'))}">⚔${u.att} 🛡${u.def} 🏹${u.rng} ↯${u.cha} ♥${u.mor}</small>`;
 }
@@ -733,6 +856,7 @@ function recruitTab(pid) {
     </div>`;
   }
   html += `</div>`;
+  html += shipsSection(pid);
   return html;
 }
 
@@ -821,6 +945,9 @@ function armyPanel(a) {
         html += `<div class="note">${tw.siege && tw.siege.fac === a.fac ? esc(t('prov.siegeProgress', { n: tw.siege.turns, m: tw.siege.needed })) : esc(t('prov.siegeWillStart', { m: townSiegeNeeded(a.prov, tgt) }))}</div>`;
       }
     }
+    for (const fl of fleetsIn(a.prov).filter((x) => x.fac === a.fac)) {
+      acts.push(canEmbark(fl, a) ? `<button data-act="board" data-id="${a.id}" data-fl="${fl.id}">⛵ ${esc(t('sh.boardFleet', { n: Math.floor(capacity(fl)) - cargoUnits(fl) }))}</button>` : `<button disabled>⛵ ${esc(t('sh.noRoom'))}</button>`);
+    }
     const others = armiesIn(a.prov).filter((x) => x.fac === a.fac && x.id !== a.id);
     for (const o of others) acts.push(`<button data-act="merge" data-id="${o.id}">⇆ ${esc(t('act.merge', { name: armyTitle(o) }))}</button>`);
     if (acts.length) html += `<div class="actions">${acts.join('')}</div>`;
@@ -890,6 +1017,11 @@ const panelHandlers = {
     if (G.s.armies[a.id]) selectArmy(a.id); else clearSelection();
     refreshAll();
   },
+  buildShip: (el) => { const pid = UIState.map.sel.prov; if (buildShip(G.s.player, pid, el.dataset.s)) { toast(t('sh.built')); refreshAll(false); } },
+  board: (el) => { const fl = fleetById(el.dataset.fl), a = army(el.dataset.id); if (embark(fl, a)) { toast(t('sh.boarded')); selectFleet(fl.id); refreshAll(false); } },
+  unload: (el) => { const fl = fleetById(UIState.map.sel.fleet); const out = disembark(fl, el.dataset.i === 'all' ? null : +el.dataset.i); if (out.length) { toast(t('sh.landed')); if (out.length === 1) selectArmy(out[0].id); refreshAll(false); } },
+  sail: () => { const pv = UIState.map.preview; const fl = fleetById(pv?.fleet); if (fl) sail(fl, pv.target); },
+  unsail: () => { cancelSail(fleetById(UIState.map.sel.fleet)); renderPanel(); UIState.map.invalidate(); },
   autoToggle: () => { const pid = UIState.map.sel.prov; setAuto(pid, !prov(pid).auto); renderPanel(); UIState.map.invalidate(); },
   autoAll: () => { fac(G.s.player).autoAll = true; for (const pid of factionProvinces(G.s.player)) setAuto(pid, true); toast(t('auto.count', { n: autoProvinces(G.s.player).length, m: factionProvinces(G.s.player).length })); renderPanel(); },
   autoNone: () => { fac(G.s.player).autoAll = false; for (const pid of factionProvinces(G.s.player)) setAuto(pid, false); renderPanel(); },

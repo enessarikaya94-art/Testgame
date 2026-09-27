@@ -249,7 +249,7 @@ export function createGame(scenarioId, playerFid, seed = Date.now() % 1e9, mapDa
     f.techs = [...techs];
   }
 
-  for (const [v, o] of sc.vassals || []) if (F[v].alive && F[o].alive) F[v].overlord = o;
+  for (const [v, o] of sc.vassals || []) if (F[v].alive && F[o].alive) { F[v].overlord = o; F[v].vassalSince = -48; }
   for (const [a, b] of sc.wars || []) if (F[a].alive && F[b].alive) { const r = rel(a, b); r.war = true; r.warStart = 0; }
   for (const [a, b] of sc.alliances || []) if (F[a].alive && F[b].alive) { rel(a, b).alliance = true; }
 

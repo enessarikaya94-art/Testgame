@@ -2,6 +2,8 @@
 
 import { G, fac, prov, pdef, chr, factionProvinces, factionArmies, armiesIn, atWar, neighbors, ROUTES_BY_PROV, relPeek, log, newId, provName, bfsDistances, staticDistances, rng, setOwner, rel, bumpAlive } from './state.js';
 import { TERRAINS, GOODS, TRADE_ROUTES, GOVERNMENTS, RELIGIONS, CULTURES } from '../data/world.js';
+import { tributeRate, loyaltyOf } from './vassals.js';
+import { fleetUpkeep } from './naval.js';
 import { BUILDINGS } from '../data/buildings.js';
 import { TECHS, techCost } from '../data/techs.js';
 import { UNITS, CULTURE_ARMY } from '../data/units.js';
@@ -151,7 +153,9 @@ export function provinceIncome(pid, baseOnly = false) {
     + ((se.flat || 0) * ordF * dev * besieged);
 
   const nTrade = G.tradeCount?.[f.id] || 0;
-  const tradeF = (1 + Math.min(0.5, nTrade * 0.08)) * (1 + m.trade + (b.market || 0) * BUILDINGS.market.eff.trade + (b.port || 0) * BUILDINGS.port.eff.trade);
+  // Seeblockade: Feindliche Flotten im Hafen legen den Seehandel lahm
+  const blockF = G.s.blockade?.[pid] ? 0.6 : 1;
+  const tradeF = blockF * (1 + Math.min(0.5, nTrade * 0.08)) * (1 + m.trade + (b.market || 0) * BUILDINGS.market.eff.trade + (b.port || 0) * BUILDINGS.port.eff.trade);
   let goods = 0;
   for (const g of [...d.goods, ...(p.extraGoods || [])]) {
     let v = GOODS[g].value * goodPrice(f.id, g) * (1 + m.goods + (b.workshop || 0) * BUILDINGS.workshop.eff.goods + (b.caravanserai || 0) * BUILDINGS.caravanserai.eff.goods + (b.port || 0) * BUILDINGS.port.eff.goods + (se.goods || 0) + (fe.goods || 0));
@@ -231,14 +235,18 @@ export function factionIncome(fid) {
   r.tax *= mult; r.goods *= mult; r.route *= mult; r.pasture *= mult;
   const gross = r.tax + r.goods + r.route + r.pasture;
   // Tribut
-  if (f.overlord && fac(f.overlord)?.alive) r.tributePaid = gross * 0.15;
+  // Lehnszins: Satz des Lehnsherrn, untreue Vasallen zahlen nur die Hälfte
+  if (f.overlord && fac(f.overlord)?.alive) r.tributePaid = gross * tributeRate(fid) * (loyaltyOf(fid) < 40 ? 0.5 : 1);
   for (const v of Object.values(G.s.factions)) {
     if (v.alive && v.overlord === fid && v.last) r.tribute += v.last.tributePaid || 0;
   }
   const gov = GOVERNMENTS[f.gov];
   let up = 0;
   for (const a of factionArmies(fid)) for (const u of a.units) up += UNITS[u.t].upkeep;
-  r.upkeep = up * UPKEEP_SCALE * gov.upkeepMult * (1 + m.upkeep);
+  const fu = fleetUpkeep(fid);
+  up += fu.units;
+  r.upkeep = up * UPKEEP_SCALE * gov.upkeepMult * (1 + m.upkeep) + fu.ships;
+  r.fleet = fu.ships;
   // Hof und Verwaltung: wächst mit Reichsgröße und Bauten
   const provs = factionProvinces(fid);
   let levels = 0;

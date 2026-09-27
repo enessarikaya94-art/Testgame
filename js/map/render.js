@@ -687,6 +687,7 @@ export class MapView {
     this.drawCities(ctx, z, g);
     this.drawPreview(ctx, z);
     this.drawArmies(ctx, z, g);
+    if (g.fleets) this.drawFleets(ctx, z, g);
     // Namen der Meere und Wüsten
     this.drawGeoLabels(ctx, z);
   }
@@ -988,13 +989,86 @@ export class MapView {
   // ---------- Kamera & Eingabe ----------
   worldAt(sx, sy) { return [sx / this.cam.z + this.cam.x, sy / this.cam.z + this.cam.y]; }
 
-  provinceAt(wx, wy) {
+  provinceAt(wx, wy, any = false) {
     const { gw, gh, ids, nP } = this.map;
     const cx = Math.floor(wx / CELL), cy = Math.floor(wy / CELL);
     if (cx < 0 || cy < 0 || cx >= gw || cy >= gh) return null;
     const id = ids[cy * gw + cx];
-    if (id >= 0 && id < nP && this.visible(PROVINCES[id].id)) return PROVINCES[id].id;
+    if (id >= 0 && id < nP && (any || this.visible(PROVINCES[id].id))) return PROVINCES[id].id;
     return null;
+  }
+
+  // Flotten: im Hafen neben der Stadt, auf See entlang ihres Seewegs
+  fleetSlots() {
+    const g = this.game;
+    if (!g?.fleets) return [];
+    const s = 1 / this.cam.z;
+    const out = [];
+    const docked = {};
+    for (const f of g.fleets()) {
+      if (!f.own && !f.seen) continue;
+      if (f.atSea) { out.push({ f, x: f.x, y: f.y }); continue; }
+      const k = docked[f.prov] = (docked[f.prov] || 0) + 1;
+      out.push({ f, x: f.x - (12 + (k - 1) * 16) * s, y: f.y + 12 * s });
+    }
+    return out;
+  }
+
+  drawFleets(ctx, z, g) {
+    const s = 1 / z;
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // Seewege eigener Flotten
+    for (const f of g.fleets()) {
+      if (!f.own || !f.routePts) continue;
+      ctx.strokeStyle = 'rgba(30,70,140,0.7)'; ctx.lineWidth = 2 * s; ctx.setLineDash([5 * s, 5 * s]);
+      ctx.beginPath(); ctx.moveTo(f.x, f.y);
+      for (const [x, y] of f.routeRest) ctx.lineTo(x, y);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    for (const { f, x, y } of this.fleetSlots()) {
+      if (!this.inView(x, y)) continue;
+      const col = g.facColor(f.fac);
+      const sel = this.sel.fleet === f.id;
+      // Rumpf
+      ctx.fillStyle = col; ctx.strokeStyle = INK; ctx.lineWidth = 1.1 * s;
+      ctx.beginPath(); ctx.moveTo(x - 9 * s, y); ctx.lineTo(x + 9 * s, y); ctx.lineTo(x + 6 * s, y + 5 * s); ctx.lineTo(x - 6 * s, y + 5 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Mast und Segel
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 12 * s); ctx.stroke();
+      ctx.fillStyle = '#f4e6b8';
+      ctx.beginPath(); ctx.moveTo(x + 1 * s, y - 11 * s); ctx.lineTo(x + 8 * s, y - 3 * s); ctx.lineTo(x + 1 * s, y - 2 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+      if (sel) { ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 2.2 * s; ctx.beginPath(); ctx.arc(x, y - 3 * s, 13 * s, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.font = `bold ${8 * s}px sans-serif`;
+      const txt = f.label;
+      const w = ctx.measureText(txt).width + 4 * s;
+      ctx.fillStyle = f.own ? 'rgba(220,235,255,0.92)' : 'rgba(20,30,60,0.8)';
+      ctx.fillRect(x - w / 2, y + 6 * s, w, 9 * s);
+      ctx.fillStyle = f.own ? '#12305a' : '#e8f0ff';
+      ctx.fillText(txt, x, y + 10.8 * s);
+    }
+    // Vorschau eines Seewegs
+    const pv = this.preview;
+    if (pv && pv.fleet && pv.pts) {
+      ctx.strokeStyle = pv.ok ? 'rgba(20,80,170,0.9)' : 'rgba(150,30,20,0.9)'; ctx.lineWidth = 2.6 * s; ctx.setLineDash([7 * s, 5 * s]);
+      ctx.beginPath(); ctx.moveTo(pv.pts[0][0], pv.pts[0][1]);
+      for (const [x, y] of pv.pts.slice(1)) ctx.lineTo(x, y);
+      ctx.stroke(); ctx.setLineDash([]);
+      const [ex, ey] = pv.pts[pv.pts.length - 1];
+      ctx.fillStyle = 'rgba(20,80,170,0.95)'; ctx.beginPath(); ctx.arc(ex, ey, 8 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `bold ${9 * s}px sans-serif`; ctx.fillText(String(pv.turns), ex, ey + 0.5 * s);
+    }
+    ctx.restore();
+  }
+
+  fleetAt(wx, wy) {
+    if (!this.game?.fleets) return null;
+    const s = 1 / this.cam.z;
+    let best = null, bd = 14 * s;
+    for (const slot of this.fleetSlots()) {
+      const d = Math.hypot(slot.x - wx, slot.y - 2 * s - wy);
+      if (d < bd) { bd = d; best = slot.f; }
+    }
+    return best;
   }
 
   armyAt(wx, wy) {
@@ -1106,10 +1180,12 @@ export class MapView {
       }
       if (drag && !drag.moved) {
         const [wx, wy] = this.worldAt(e.offsetX, e.offsetY);
-        const army = this.armyAt(wx, wy);
+        const fleet = this.fleetAt(wx, wy);
+        const army = fleet ? null : this.armyAt(wx, wy);
         const pid = this.provinceAt(wx, wy);
-        if (drag.button === 2) this.emit('rightclick', { army, prov: pid });
-        else this.emit('click', { army, prov: pid, shift: e.shiftKey, town: army ? null : this.townAt(wx, wy) });
+        const fogProv = pid || this.provinceAt(wx, wy, true);
+        if (drag.button === 2) this.emit('rightclick', { army, fleet, prov: pid, fogProv });
+        else this.emit('click', { army, fleet, prov: pid, fogProv, shift: e.shiftKey, town: army || fleet ? null : this.townAt(wx, wy) });
       }
       drag = null;
     };
